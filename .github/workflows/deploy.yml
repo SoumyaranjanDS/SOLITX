@@ -1,0 +1,55 @@
+name: Deploy Fullstack App to Server
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build React Frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Deploy Code to Server via SSH
+        uses: easingthemes/ssh-deploy@main
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          ARGS: "-rlgoDzvc -i"
+          SOURCE: "/"
+          REMOTE_HOST: ${{ secrets.SERVER_HOST }}
+          REMOTE_USER: ${{ secrets.SERVER_USER }}
+          TARGET: "/var/www/solitx"
+          EXCLUDE: "/frontend/node_modules/, /backend/node_modules/, /.git/"
+
+      - name: Start Node.js Backend with PM2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            # 1. Ensure PM2 is installed globally
+            if ! command -v pm2 &> /dev/null; then sudo npm install -g pm2; fi
+            
+            # 2. Go to backend and install production dependencies
+            cd /var/www/solitx/backend
+            npm install --omit=dev
+            
+            # 3. Start or Restart the API
+            pm2 restart solitx-api || pm2 start src/server.js --name solitx-api
+            pm2 save

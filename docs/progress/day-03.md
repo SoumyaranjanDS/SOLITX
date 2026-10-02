@@ -1,26 +1,19 @@
-# Day 03
+# Day 03: Capacity Estimation
 Status: Completed
 
 Built:
-- Express modular monolith foundation
-- PostgreSQL connection pooling via Neon
-- User model and raw SQL migrations
-- User registration & login endpoints
-- Stateless JWT generation and middleware
-- Protected routes
-- Vite + React frontend with Swiss Editorial Minimal UI
+- Back-of-the-envelope capacity planning
+- Calculated 20k DAU projections (100:1 read/write ratio)
+- Identified 5 million read requests per day
+- Formulated peak Request Per Second (RPS) ~200
 
 Learned:
-- Authentication vs authorization
-- Password hashing mathematics (bcryptjs) vs encryption
-- JWT anatomy and stateless verification
-- Express centralized error handling patterns
+- How to estimate database traffic load before writing code.
+- Why microservices are unnecessary for standard read-heavy social media applications below 50,000 DAU.
+- How Node.js handles I/O scaling inherently.
 
 Tested:
-- Registration constraints (Duplicate users blocked at DB level)
-- Login (Invalid credentials rejected)
-- Protected routes (Invalid/missing tokens rejected)
-- UI Flow (Login to Feed, Logout)
+- Mathematical proof of Monolith viability for V0.
 
 Next problem:
-Now that we have authentication, what happens to our rate of failed logins if a botnet targets the endpoint? How do we protect the database from being overwhelmed by brute-force attacks while running multiple Node instances?
+Now that we have proven mathematically that a monolith can handle the load, we need to actually build the engine. We need a robust backend that guarantees data integrity and handles authentication securely.
