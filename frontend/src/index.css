@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #F9F8F6;
+  --color-ink: #141413;
+  --color-ink-subtle: #686764;
+  --color-accent: #1A56DB;
+  --color-hairline: #E5E4DE;
+  --color-surface: #FFFFFF;
+  --color-surface-recessed: #EFEFEA;
+
+  --font-geist: "Geist", sans-serif;
+  
+  --radius-sm: 0.125rem;
+  --radius-md: 0.25rem; /* Strict 4px base radius */
+  --radius-lg: 0.5rem; /* Max radius for modals */
+}
+
+/* Base Archival Application */
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-geist);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Global resets for the Swiss aesthetic */
+button, input {
+  font-family: inherit;
+}
