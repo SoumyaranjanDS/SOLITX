@@ -35,3 +35,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Internal Workflows
+docs/buffer_strategy.md
