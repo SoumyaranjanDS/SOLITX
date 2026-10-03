@@ -40,6 +40,10 @@ const runMigrations = async () => {
     );
   `;
 
+  const createIndexesQuery = `
+    CREATE INDEX IF NOT EXISTS idx_posts_user_id_created_at ON posts (user_id, created_at DESC);
+  `;
+
   try {
     console.log("Starting database migrations...");
 
@@ -54,6 +58,9 @@ const runMigrations = async () => {
 
     await pool.query(createLikesTableQuery);
     console.log("'likes' table created/verified successfully!");
+
+    await pool.query(createIndexesQuery);
+    console.log("B-Tree Indexes created/verified successfully!");
   } catch (error) {
     console.error("Migration failed:", error.message);
   } finally {
