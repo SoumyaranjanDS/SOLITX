@@ -7,7 +7,8 @@ const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: true }
+  ssl: { rejectUnauthorized: true },
+  max: 100, // DAY 9: Connection Pooling - Increased from default 10 to 100
 });
 
 export const connectDB = async () => {
