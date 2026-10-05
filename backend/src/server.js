@@ -15,8 +15,34 @@ app.use(express.json());
 const port = process.env.PORT || 5005;
 
 import authRoutes from "./modules/auth/auth.routes.js";
+import pool from "./config/db.js";
 
 app.use("/api/v1/auth", authRoutes);
+
+// TEMPORARY ENDPOINT FOR LOAD TESTING (DAY 8)
+app.get("/api/v1/test/feed/:user_id", async (req, res, next) => {
+  try {
+    const { user_id } = req.params;
+    const query = `
+      SELECT * FROM posts 
+      WHERE user_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT 20;
+    `;
+    const result = await pool.query(query, [user_id]);
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { count: result.rowCount, data: result.rows },
+          "Load test feed returned",
+        ),
+      );
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/", async (req, res, next) => {
   try {
