@@ -1,31 +1,10 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-@theme {
-  --color-canvas: #F9F8F6;
-  --color-ink: #141413;
-  --color-ink-subtle: #686764;
-  --color-accent: #1A56DB;
-  --color-hairline: #E5E4DE;
-  --color-surface: #FFFFFF;
-  --color-surface-recessed: #EFEFEA;
-
-  --font-geist: "Geist", sans-serif;
-  
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem; /* Strict 4px base radius */
-  --radius-lg: 0.5rem; /* Max radius for modals */
-}
-
-/* Base Archival Application */
-body {
-  background-color: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-geist);
-  margin: 0;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Global resets for the Swiss aesthetic */
-button, input {
-  font-family: inherit;
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #FFFFFF; color: #0F1419; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  ::-webkit-scrollbar { width: 0; background: transparent; }
+  ::selection { background: rgba(107, 58, 200, 0.15); color: #0F1419; }
 }

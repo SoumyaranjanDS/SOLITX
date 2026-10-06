@@ -131,3 +131,75 @@ export const deleteUser = async (req, res, next) => {
     next(error);
   }
 };
+
+export const googleAuthCallback = async (req, res, next) => {
+  try {
+    const profile = req.user;
+    const email = profile.emails[0].value;
+
+    const findUserQuery = "SELECT id, username, email FROM users WHERE email = $1";
+    let result = await pool.query(findUserQuery, [email]);
+
+    const frontendUrl = process.env.NODE_ENV === "production" ? "https://solitx.soumya.site" : "http://localhost:5173";
+
+    if (result.rows.length === 0) {
+      // New user! Send them to a username selection page with a temporary setup token.
+      const tempToken = jwt.sign({ email, name: profile.displayName }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      return res.redirect(`${frontendUrl}/setup-username?token=${tempToken}`);
+    } else {
+      // Existing user, log them in normally
+      const user = result.rows[0];
+      const token = generateToken(user.id);
+      return res.redirect(`${frontendUrl}?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const checkUsername = async (req, res, next) => {
+  try {
+    const { username } = req.query;
+    if (!username) return res.status(400).json(new ApiResponse(400, null, "Username required"));
+    
+    const result = await pool.query('SELECT 1 FROM users WHERE username = $1 LIMIT 1', [username.toLowerCase()]);
+    return res.status(200).json(new ApiResponse(200, { available: result.rowCount === 0 }, "Checked username"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const completeGoogleRegistration = async (req, res, next) => {
+  try {
+    const { tempToken, username } = req.body;
+    if (!tempToken || !username) {
+      throw new AppError(400, "Missing token or username");
+    }
+
+    const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    const { email } = decoded;
+
+    const checkUser = await pool.query("SELECT 1 FROM users WHERE username = $1", [username.toLowerCase()]);
+    if (checkUser.rowCount > 0) throw new AppError(400, "Username already taken");
+
+    const checkEmail = await pool.query("SELECT 1 FROM users WHERE email = $1", [email]);
+    if (checkEmail.rowCount > 0) throw new AppError(400, "Email already registered");
+
+    const randomPassword = Math.random().toString(36).slice(-8);
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(randomPassword, salt);
+
+    const insertUserQuery = `
+      INSERT INTO users (username, email, password_hash)
+      VALUES ($1, $2, $3)
+      RETURNING id, username, email, bio, created_at
+    `;
+    const newUser = await pool.query(insertUserQuery, [username.toLowerCase(), email, passwordHash]);
+    const user = newUser.rows[0];
+
+    const token = generateToken(user.id);
+    return res.status(201).json(new ApiResponse(201, { user, token }, "Registered successfully"));
+  } catch (error) {
+    next(error);
+  }
+};
