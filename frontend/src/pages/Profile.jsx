@@ -79,9 +79,9 @@ const Profile = () => {
 
         {/* Profile Info */}
         <div className="px-4 pb-4">
-          <div className="flex justify-between items-end">
+          <div className="flex justify-between items-start">
             {/* Avatar */}
-            <div className="-mt-12 sm:-mt-16 w-[72px] h-[72px] sm:w-[134px] sm:h-[134px] rounded-full border-4 border-white bg-gray-200 overflow-hidden flex-shrink-0">
+            <div className="-mt-12 sm:-mt-16 w-[72px] h-[72px] sm:w-[134px] sm:h-[134px] rounded-full border-4 border-white bg-gray-200 overflow-hidden flex-shrink-0 relative z-10">
               <img
                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`}
                 alt="Avatar"
@@ -90,19 +90,9 @@ const Profile = () => {
             </div>
 
             {/* Action */}
-            <div className="pb-1">
+            <div className="mt-3">
               {isOwnProfile ? (
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('token');
-                      localStorage.removeItem('user');
-                      navigate('/auth');
-                    }}
-                    className="px-4 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 font-bold text-[14px] rounded-full transition-colors whitespace-nowrap"
-                  >
-                    Logout
-                  </button>
                   <button className="px-4 py-1.5 border border-[#CFD9DE] hover:bg-[#F7F9F9] text-[#0F1419] font-bold text-[14px] rounded-full transition-colors whitespace-nowrap">
                     Edit profile
                   </button>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Search, Bell, Mail, Bookmark, User, Feather, List, Users, MoreHorizontal, Star } from 'lucide-react';
 
@@ -47,6 +47,21 @@ const AppShell = ({ children, rightSidebar }) => {
     { icon: MoreHorizontal, label: 'More',    path: '/more' },
   ];
 
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    const handleOpen = () => setIsDrawerOpen(true);
+    window.addEventListener('open-drawer', handleOpen);
+    return () => window.removeEventListener('open-drawer', handleOpen);
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/auth');
+  };
+
   return (
     <div className="min-h-screen bg-white flex justify-center">
 
@@ -92,7 +107,7 @@ const AppShell = ({ children, rightSidebar }) => {
             <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-full h-full object-cover" />
           </div>
           <div className="hidden xl:flex flex-col min-w-0 flex-1">
-            <span className="font-bold text-[14px] leading-tight text-[#0F1419] truncate">{user.username}</span>
+            <span className="font-bold text-[14px] leading-tight text-[#0F1419] truncate">{user.name || user.username}</span>
             <span className="text-[13px] text-[#536471] truncate">@{user.username}</span>
           </div>
           <MoreHorizontal size={16} className="hidden xl:block text-[#0F1419] flex-shrink-0" />
@@ -201,6 +216,95 @@ const AppShell = ({ children, rightSidebar }) => {
       <button className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_2px_16px_rgba(124,58,237,0.4)] z-20 transition-all active:scale-95">
         <Feather size={22} fill="white" />
       </button>
+
+      {/* Mobile Sidebar Drawer */}
+      {isDrawerOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/40 transition-opacity"
+            onClick={() => setIsDrawerOpen(false)}
+          />
+          
+          {/* Drawer Content */}
+          <div className="relative w-[280px] max-w-[80%] bg-white h-full shadow-2xl flex flex-col overflow-y-auto animate-in slide-in-from-left duration-300">
+            {/* Drawer Header: Profile Info */}
+            <div className="p-4 border-b border-[#EFF3F4]">
+              <div className="flex justify-between items-start mb-2">
+                <div 
+                  onClick={() => { setIsDrawerOpen(false); navigate(`/profile/${user.username}`); }}
+                  className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-pointer"
+                >
+                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-full h-full object-cover" />
+                </div>
+                <button onClick={() => setIsDrawerOpen(false)} className="p-2 -mr-2 text-[#0F1419] hover:bg-[#F7F9F9] rounded-full">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <div onClick={() => { setIsDrawerOpen(false); navigate(`/profile/${user.username}`); }} className="cursor-pointer">
+                <h3 className="font-bold text-[17px] text-[#0F1419] leading-tight">{user.name || user.username}</h3>
+                <p className="text-[15px] text-[#536471]">@{user.username}</p>
+              </div>
+              <div className="flex gap-4 mt-3 text-[14px]">
+                <div className="flex gap-1 hover:underline cursor-pointer"><span className="font-bold text-[#0F1419]">124</span><span className="text-[#536471]">Following</span></div>
+                <div className="flex gap-1 hover:underline cursor-pointer"><span className="font-bold text-[#0F1419]">1,402</span><span className="text-[#536471]">Followers</span></div>
+              </div>
+            </div>
+
+            {/* Drawer Nav Items */}
+            <nav className="flex-1 py-2">
+              {navItems.map(item => (
+                <button
+                  key={item.label}
+                  onClick={() => { setIsDrawerOpen(false); navigate(item.path); }}
+                  className="w-full flex items-center gap-4 px-4 py-3 hover:bg-[#F7F9F9] transition-colors text-left"
+                >
+                  <item.icon size={22} className="text-[#0F1419]" strokeWidth={2} />
+                  <span className="font-bold text-[17px] text-[#0F1419]">{item.label}</span>
+                  {item.badge && <span className="ml-auto w-1.5 h-1.5 bg-[#7C3AED] rounded-full" />}
+                </button>
+              ))}
+            </nav>
+
+            {/* Logout Section */}
+            <div className="p-4 border-t border-[#EFF3F4]">
+              <button
+                onClick={() => setIsLogoutModalOpen(true)}
+                className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[15px] rounded-full transition-colors border border-red-200"
+              >
+                Log out @{user.username}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {isLogoutModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setIsLogoutModalOpen(false)} />
+          <div className="relative bg-white rounded-2xl w-full max-w-[320px] p-8 text-center shadow-xl">
+            <h2 className="font-bold text-[20px] text-[#0F1419] mb-2">Log out of SOLITX?</h2>
+            <p className="text-[#536471] text-[15px] mb-6 leading-relaxed">
+              You can always log back in at any time. If you just want to switch accounts, you can do that by adding an existing account.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleLogout}
+                className="w-full py-3 bg-[#0F1419] hover:bg-[#272c30] text-white font-bold text-[15px] rounded-full transition-colors"
+              >
+                Log out
+              </button>
+              <button
+                onClick={() => setIsLogoutModalOpen(false)}
+                className="w-full py-3 bg-white hover:bg-[#E7ECF0] text-[#0F1419] font-bold text-[15px] rounded-full transition-colors border border-[#CFD9DE]"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

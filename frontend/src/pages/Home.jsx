@@ -124,7 +124,7 @@ const Home = () => {
         {/* Mobile logo row */}
         <div className="md:hidden flex items-center justify-between px-4 h-[53px]">
           <button
-            onClick={() => navigate(`/profile/${user.username}`)}
+            onClick={() => window.dispatchEvent(new Event('open-drawer'))}
             className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden"
           >
             <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="me" className="w-full h-full object-cover" />
