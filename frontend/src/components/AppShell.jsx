@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Search, Bell, Mail, Bookmark, User, Feather, List, Users, MoreHorizontal, Star } from 'lucide-react';
+import { Home, Search, Bell, Mail, Bookmark, User, Feather, List, Users, MoreHorizontal, Star, LogOut } from 'lucide-react';
 
 // ─── SOLITX Logo ──────────────────────────────────────────────────────────────
 export const SolitxLogo = ({ size = 30 }) => (
@@ -98,19 +98,17 @@ const AppShell = ({ children, rightSidebar }) => {
           </button>
         </div>
 
-        {/* User Profile Mini */}
-        <div
-          onClick={() => setIsLogoutModalOpen(true)}
-          className="flex items-center gap-2 p-2 rounded-full cursor-pointer hover:bg-[#F7F9F9] transition-colors mb-2"
-        >
-          <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-full h-full object-cover" />
-          </div>
-          <div className="hidden xl:flex flex-col min-w-0 flex-1">
-            <span className="font-bold text-[14px] leading-tight text-[#0F1419] truncate">{user.name || user.username}</span>
-            <span className="text-[13px] text-[#536471] truncate">@{user.username}</span>
-          </div>
-          <MoreHorizontal size={16} className="hidden xl:block text-[#0F1419] flex-shrink-0" />
+        {/* Logout Button (Desktop) */}
+        <div className="mb-2 mt-auto xl:pr-2">
+          <button
+            onClick={() => setIsLogoutModalOpen(true)}
+            className="flex items-center gap-3 px-2.5 py-2 rounded-full w-fit xl:w-full transition-all duration-150 text-red-600 hover:bg-red-50 hover:text-red-700"
+          >
+            <div className="relative flex-shrink-0">
+              <LogOut size={20} strokeWidth={2} />
+            </div>
+            <span className="hidden xl:block text-[16px] font-bold">Logout</span>
+          </button>
         </div>
       </aside>
 
