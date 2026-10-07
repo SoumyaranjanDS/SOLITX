@@ -100,7 +100,7 @@ const AppShell = ({ children, rightSidebar }) => {
 
         {/* User Profile Mini */}
         <div
-          onClick={() => navigate(`/profile/${user.username}`)}
+          onClick={() => setIsLogoutModalOpen(true)}
           className="flex items-center gap-2 p-2 rounded-full cursor-pointer hover:bg-[#F7F9F9] transition-colors mb-2"
         >
           <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
