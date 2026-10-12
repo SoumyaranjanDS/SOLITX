@@ -26,3 +26,21 @@ export const protect = async (req, res, next) => {
     next(new AppError(401, "Not authorized, token failed"));
   }
 };
+
+export const optionalProtect = async (req, res, next) => {
+  try {
+    let token;
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+    if (token) {
+      const secret = process.env.JWT_SECRET || "solitx_development_secret_key";
+      const decoded = jwt.verify(token, secret);
+      req.user = { id: decoded.id };
+    }
+  } catch (err) {
+    // Silently continue as unauthenticated guest
+    req.user = null;
+  }
+  next();
+};

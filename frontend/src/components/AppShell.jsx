@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Search, Bell, Mail, Bookmark, User, Feather, List, Users, MoreHorizontal, Star, LogOut } from 'lucide-react';
+import ComposeModal from './ComposeModal';
+import api from '../api';
 
 // ─── SOLITX Logo ──────────────────────────────────────────────────────────────
 export const SolitxLogo = ({ size = 30 }) => (
@@ -49,12 +51,37 @@ const AppShell = ({ children, rightSidebar }) => {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
+  const [suggestedUsers, setSuggestedUsers] = useState([]);
 
   React.useEffect(() => {
     const handleOpen = () => setIsDrawerOpen(true);
+    const handleOpenCompose = () => setIsComposeModalOpen(true);
+
     window.addEventListener('open-drawer', handleOpen);
-    return () => window.removeEventListener('open-drawer', handleOpen);
+    window.addEventListener('open-compose', handleOpenCompose);
+
+    // Fetch Who to follow suggestions
+    api.get('/users/suggestions')
+      .then(res => setSuggestedUsers(res.data?.data?.users || []))
+      .catch(() => {});
+
+    return () => {
+      window.removeEventListener('open-drawer', handleOpen);
+      window.removeEventListener('open-compose', handleOpenCompose);
+    };
   }, []);
+
+  const handleFollowSuggestion = async (targetUsername) => {
+    try {
+      const res = await api.post(`/users/${targetUsername}/follow`);
+      if (res.data?.data) {
+        setSuggestedUsers(prev => 
+          prev.map(u => u.username === targetUsername ? { ...u, is_following: res.data.data.isFollowing } : u)
+        );
+      }
+    } catch (err) {}
+  };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -92,7 +119,10 @@ const AppShell = ({ children, rightSidebar }) => {
 
         {/* Post Button */}
         <div className="mt-3 mb-3 xl:pr-2">
-          <button className="w-9 h-9 xl:w-full xl:h-auto xl:py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full transition-all flex items-center justify-center gap-2 shadow-sm">
+          <button 
+            onClick={() => window.dispatchEvent(new Event('open-compose'))}
+            className="w-9 h-9 xl:w-full xl:h-auto xl:py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full transition-all flex items-center justify-center gap-2 shadow-sm active:scale-98"
+          >
             <Feather size={17} fill="white" className="xl:hidden" />
             <span className="hidden xl:block">Post</span>
           </button>
@@ -138,32 +168,40 @@ const AppShell = ({ children, rightSidebar }) => {
               {/* Who to follow */}
               <div className="bg-[#F7F9F9] rounded-2xl overflow-hidden">
                 <h2 className="font-extrabold text-[19px] text-[#0F1419] px-4 pt-4 pb-3">Who to follow</h2>
-                {[].map(person => (
-                  <div key={person.handle} className="flex items-center justify-between px-4 py-3 hover:bg-[#E7ECF0] cursor-pointer transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gray-300 overflow-hidden flex-shrink-0">
-                        <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${person.handle}`} alt={person.name} className="w-full h-full object-cover" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <p className="font-bold text-[15px] text-[#0F1419]">{person.name}</p>
-                          {person.verified && (
-                            <svg className="w-4 h-4 text-[#7C3AED]" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M22.25 12c0-1.43-.88-2.67-2.19-3.34.46-1.39.2-2.9-.81-3.91-1.01-1-2.52-1.27-3.91-.81C14.67 2.88 13.43 2 12 2c-1.43 0-2.67.88-3.34 2.19-1.39-.46-2.9-.2-3.91.81-1 1.01-1.27 2.52-.81 3.91C2.88 9.33 2 10.57 2 12c0 1.43.88 2.67 2.19 3.34-.46 1.39-.2 2.9.81 3.91 1.01 1 2.52 1.27 3.91.81C9.33 21.12 10.57 22 12 22c1.43 0 2.67-.88 3.34-2.19 1.39.46 2.9.2 3.91-.81 1-1.01 1.27-2.52.81-3.91C21.12 14.67 22 13.43 22 12zm-6.16-1.42l-3.8 3.79-1.43 1.43-3.07-3.07 1.42-1.42 1.65 1.64 3.8-3.79 1.43 1.42z"/>
-                            </svg>
-                          )}
+                {suggestedUsers.length === 0 ? (
+                  <p className="px-4 py-3 text-[14px] text-[#536471]">No recommendations available right now.</p>
+                ) : (
+                  suggestedUsers.map(person => (
+                    <div 
+                      key={person.id || person.username} 
+                      onClick={() => navigate(`/profile/${person.username}`)}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-[#E7ECF0] cursor-pointer transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-gray-300 overflow-hidden flex-shrink-0">
+                          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${person.username}`} alt={person.username} className="w-full h-full object-cover" />
                         </div>
-                        <p className="text-[14px] text-[#536471]">@{person.handle}</p>
+                        <div className="min-w-0">
+                          <p className="font-bold text-[15px] text-[#0F1419] truncate">{person.username}</p>
+                          <p className="text-[14px] text-[#536471] truncate">@{person.username}</p>
+                        </div>
                       </div>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFollowSuggestion(person.username);
+                        }}
+                        className={`px-4 py-1.5 font-bold text-[14px] rounded-full transition-colors flex-shrink-0 ml-2 ${
+                          person.is_following
+                            ? 'border border-[#CFD9DE] hover:border-red-300 hover:text-red-600 hover:bg-red-50 text-[#0F1419]'
+                            : 'bg-[#0F1419] hover:bg-[#272c30] text-white'
+                        }`}
+                      >
+                        {person.is_following ? 'Following' : 'Follow'}
+                      </button>
                     </div>
-                    <button className="px-4 py-1.5 bg-[#0F1419] hover:bg-[#272c30] text-white font-bold text-[14px] rounded-full transition-colors">
-                      Follow
-                    </button>
-                  </div>
-                ))}
-                <button className="w-full px-4 py-4 text-[#7C3AED] hover:bg-[#E7ECF0] transition-colors text-[15px] text-left rounded-b-2xl">
-                  Show more
-                </button>
+                  ))
+                )}
               </div>
 
               {/* Trends */}
@@ -211,7 +249,10 @@ const AppShell = ({ children, rightSidebar }) => {
       </div>
 
       {/* Mobile FAB */}
-      <button className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_2px_16px_rgba(124,58,237,0.4)] z-20 transition-all active:scale-95">
+      <button 
+        onClick={() => window.dispatchEvent(new Event('open-compose'))}
+        className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_2px_16px_rgba(124,58,237,0.4)] z-20 transition-all active:scale-95"
+      >
         <Feather size={22} fill="white" />
       </button>
 
@@ -303,6 +344,15 @@ const AppShell = ({ children, rightSidebar }) => {
           </div>
         </div>
       )}
+
+      {/* Compose Tweet Modal */}
+      <ComposeModal
+        isOpen={isComposeModalOpen}
+        onClose={() => setIsComposeModalOpen(false)}
+        onPostCreated={(newPost) => {
+          window.dispatchEvent(new CustomEvent('post-created', { detail: newPost }));
+        }}
+      />
     </div>
   );
 };

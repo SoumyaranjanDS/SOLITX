@@ -17,17 +17,36 @@ export const getUserProfile = async (req, res, next) => {
       );
     }
 
-    // 2. CACHE MISS. Query PostgreSQL
-    // Notice we include following/followers counts using subqueries
-    const query = `
-      SELECT 
-        u.id, u.username, u.email, u.bio, u.created_at,
-        (SELECT COUNT(*) FROM follows WHERE follower_id = u.id) as following_count,
-        (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as followers_count
-      FROM users u
-      WHERE u.username = $1;
-    `;
-    const result = await pool.query(query, [username]);
+    // 2. Query PostgreSQL with followers counts and is_following check
+    const currentUserId = req.user?.id || null;
+    let query;
+    let params;
+
+    if (currentUserId) {
+      query = `
+        SELECT 
+          u.id, u.username, u.email, u.bio, u.created_at,
+          (SELECT COUNT(*)::int FROM follows WHERE follower_id = u.id) as following_count,
+          (SELECT COUNT(*)::int FROM follows WHERE following_id = u.id) as followers_count,
+          EXISTS(SELECT 1 FROM follows WHERE follower_id = $2 AND following_id = u.id) as is_following
+        FROM users u
+        WHERE u.username = $1;
+      `;
+      params = [username, currentUserId];
+    } else {
+      query = `
+        SELECT 
+          u.id, u.username, u.email, u.bio, u.created_at,
+          (SELECT COUNT(*)::int FROM follows WHERE follower_id = u.id) as following_count,
+          (SELECT COUNT(*)::int FROM follows WHERE following_id = u.id) as followers_count,
+          false as is_following
+        FROM users u
+        WHERE u.username = $1;
+      `;
+      params = [username];
+    }
+
+    const result = await pool.query(query, params);
 
     if (result.rowCount === 0) {
       throw new AppError(404, "User not found");
@@ -35,28 +54,11 @@ export const getUserProfile = async (req, res, next) => {
 
     const user = result.rows[0];
 
-    // 3. Save to Redis for next time (Expires in 5 minutes)
-    await redis.set(cacheKey, JSON.stringify(user), "EX", 300);
-
     return res.status(200).json(
       new ApiResponse(200, { source: "database", user }, "Profile fetched from PostgreSQL")
     );
   } catch (error) {
-    // If the 'follows' table doesn't exist yet, fallback to simple query
-    if (error.code === '42P01') { 
-      try {
-        const query = `SELECT id, username, email, bio, created_at FROM users WHERE username = $1;`;
-        const result = await pool.query(query, [req.params.username]);
-        if (result.rowCount === 0) throw new AppError(404, "User not found");
-        
-        const user = { ...result.rows[0], following_count: 0, followers_count: 0 };
-        return res.status(200).json(new ApiResponse(200, { source: "database", user }, "Profile fetched (fallback)"));
-      } catch (fallbackError) {
-        next(fallbackError);
-      }
-    } else {
-      next(error);
-    }
+    next(error);
   }
 };
 
@@ -67,7 +69,9 @@ export const updateUserProfile = async (req, res, next) => {
     const { bio } = req.body;
     
     // Ensure the user is only updating their own profile
-    if (req.user.username !== username) {
+    const currentUserId = req.user.id;
+    const userCheck = await pool.query("SELECT id, username FROM users WHERE id = $1", [currentUserId]);
+    if (userCheck.rowCount === 0 || userCheck.rows[0].username !== username) {
       throw new AppError(403, "You can only update your own profile");
     }
 
@@ -86,11 +90,95 @@ export const updateUserProfile = async (req, res, next) => {
       throw new AppError(404, "User not found");
     }
 
-    // 2. INVALIDATE THE CACHE! (Delete stale data)
+    // 2. Invalidate cache
     await redis.del(cacheKey);
 
     return res.status(200).json(
       new ApiResponse(200, { user: result.rows[0] }, "Profile updated successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST Toggle Follow
+export const toggleFollow = async (req, res, next) => {
+  try {
+    const { username } = req.params;
+    const currentUserId = req.user.id;
+
+    const targetUser = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+    if (targetUser.rowCount === 0) {
+      throw new AppError(404, "User not found");
+    }
+    const targetUserId = targetUser.rows[0].id;
+
+    if (currentUserId === targetUserId) {
+      throw new AppError(400, "You cannot follow yourself");
+    }
+
+    const followCheck = await pool.query(
+      "SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2",
+      [currentUserId, targetUserId]
+    );
+
+    let isFollowing = false;
+    if (followCheck.rowCount > 0) {
+      await pool.query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2", [currentUserId, targetUserId]);
+      isFollowing = false;
+    } else {
+      await pool.query("INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)", [currentUserId, targetUserId]);
+      isFollowing = true;
+    }
+
+    // Invalidate Redis cache for user
+    await redis.del(`user:${username}`);
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*)::int as count FROM follows WHERE following_id = $1",
+      [targetUserId]
+    );
+    const followersCount = countResult.rows[0].count;
+
+    return res.status(200).json(
+      new ApiResponse(200, { isFollowing, followers_count: followersCount }, isFollowing ? "Followed" : "Unfollowed")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET Suggested Users ("Who to follow")
+export const getSuggestedUsers = async (req, res, next) => {
+  try {
+    const currentUserId = req.user?.id || null;
+    let query;
+    let params;
+
+    if (currentUserId) {
+      query = `
+        SELECT 
+          u.id, u.username, u.bio,
+          EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = u.id) as is_following
+        FROM users u
+        WHERE u.id != $1
+        ORDER BY u.created_at DESC
+        LIMIT 5;
+      `;
+      params = [currentUserId];
+    } else {
+      query = `
+        SELECT u.id, u.username, u.bio, false as is_following
+        FROM users u
+        ORDER BY u.created_at DESC
+        LIMIT 5;
+      `;
+      params = [];
+    }
+
+    const result = await pool.query(query, params);
+    return res.status(200).json(
+      new ApiResponse(200, { users: result.rows }, "Suggested users fetched successfully")
     );
   } catch (error) {
     next(error);

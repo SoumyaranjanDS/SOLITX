@@ -61,6 +61,9 @@ const runMigrations = async () => {
 
     await pool.query(createIndexesQuery);
     console.log("B-Tree Indexes created/verified successfully!");
+
+    await pool.query(`ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;`);
+    console.log("'posts.updated_at' column verified successfully!");
   } catch (error) {
     console.error("Migration failed:", error.message);
   } finally {

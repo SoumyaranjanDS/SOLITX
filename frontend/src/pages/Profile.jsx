@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Link as LinkIcon, Calendar, MessageCircle, Repeat2, Heart, Share, MoreHorizontal, BarChart2 } from 'lucide-react';
+import { 
+  ArrowLeft, 
+  Link as LinkIcon, 
+  Calendar, 
+  Edit3, 
+  Sparkles, 
+  X 
+} from 'lucide-react';
 import AppShell from '../components/AppShell';
+import PostCard from '../components/PostCard';
 import api from '../api';
 
 const TABS = ['Posts', 'Replies', 'Media', 'Likes'];
@@ -12,54 +20,137 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('Posts');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [postsLoading, setPostsLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [posts, setPosts] = useState([]);
+
+  // Edit Profile Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editBio, setEditBio] = useState('');
+  const [isSavingBio, setIsSavingBio] = useState(false);
 
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const isOwnProfile = currentUser?.username === username;
 
-  const [posts, setPosts] = useState([]);
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setLoading(true);
-        const response = await api.get(`/users/${username}`);
-        const apiUser = response.data.data.user;
+  // Fetch Profile Info
+  const fetchProfile = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get(`/users/${username}`);
+      const apiUser = response.data?.data?.user;
+      if (apiUser) {
         setUser({
           name: apiUser.username,
           username: apiUser.username,
-          bio: apiUser.bio || 'Building things on the internet. Engineering & design.',
+          bio: apiUser.bio || 'Building things on the internet. Engineering & system design.',
           website: 'solitx.dev',
           joinDate: new Date(apiUser.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-          following: apiUser.following_count || 0,
-          followers: apiUser.followers_count || 0,
+          following: parseInt(apiUser.following_count, 10) || 0,
+          followers: parseInt(apiUser.followers_count, 10) || 0,
         });
-      } catch {
-        setUser({
-          name: username, username,
-          bio: 'Building things on the internet.',
-          website: '', joinDate: 'October 2024',
-          following: 0, followers: 0,
-        });
-      } finally {
-        setLoading(false);
+        setIsFollowing(Boolean(apiUser.is_following));
+        setEditBio(apiUser.bio || '');
       }
-    };
-    if (username) fetchProfile();
+    } catch {
+      setUser({
+        name: username,
+        username,
+        bio: 'Building things on the internet.',
+        website: '',
+        joinDate: 'October 2024',
+        following: 0,
+        followers: 0,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch User Posts
+  const fetchUserPosts = async () => {
+    try {
+      setPostsLoading(true);
+      const res = await api.get(`/posts/user/${username}`);
+      if (res.data?.data) {
+        setPosts(res.data.data.posts || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch user posts:', err);
+    } finally {
+      setPostsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (username) {
+      fetchProfile();
+      fetchUserPosts();
+    }
   }, [username]);
 
-  if (loading) return (
-    <AppShell>
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
-      </div>
-    </AppShell>
-  );
+  // Toggle Follow
+  const handleToggleFollow = async () => {
+    try {
+      const prevFollowing = isFollowing;
+      setIsFollowing(!prevFollowing);
+      setUser(prev => ({
+        ...prev,
+        followers: prevFollowing ? Math.max(0, prev.followers - 1) : prev.followers + 1
+      }));
+
+      const res = await api.post(`/users/${username}/follow`);
+      if (res.data?.data) {
+        setIsFollowing(res.data.data.isFollowing);
+        setUser(prev => ({ ...prev, followers: res.data.data.followers_count }));
+      }
+    } catch (err) {
+      // Rollback
+      setIsFollowing(!isFollowing);
+    }
+  };
+
+  // Save Bio
+  const handleSaveBio = async () => {
+    try {
+      setIsSavingBio(true);
+      const res = await api.put(`/users/${username}`, { bio: editBio.trim() });
+      if (res.data?.data?.user) {
+        setUser(prev => ({ ...prev, bio: res.data.data.user.bio }));
+        // Update local storage user too
+        if (isOwnProfile) {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          localStorage.setItem('user', JSON.stringify({ ...stored, bio: res.data.data.user.bio }));
+        }
+      }
+      setShowEditModal(false);
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to update bio');
+    } finally {
+      setIsSavingBio(false);
+    }
+  };
+
+  const handlePostDeleted = (id) => {
+    setPosts(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handlePostUpdated = (updatedPost) => {
+    setPosts(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
+  };
+
+  if (loading) {
+    return (
+      <AppShell>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
       <div className="flex flex-col min-h-screen">
-
         {/* Sticky Header */}
         <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-[#EFF3F4] px-4 h-[53px] flex items-center gap-6">
           <button
@@ -70,7 +161,7 @@ const Profile = () => {
           </button>
           <div>
             <h1 className="font-bold text-[19px] text-[#0F1419] leading-tight">{user?.name}</h1>
-            <p className="text-[13px] text-[#536471]">{posts.length} posts</p>
+            <p className="text-[13px] text-[#536471]">{posts.length} {posts.length === 1 ? 'post' : 'posts'}</p>
           </div>
         </div>
 
@@ -93,14 +184,17 @@ const Profile = () => {
             <div className="mt-3">
               {isOwnProfile ? (
                 <div className="flex gap-2">
-                  <button className="px-4 py-1.5 border border-[#CFD9DE] hover:bg-[#F7F9F9] text-[#0F1419] font-bold text-[14px] rounded-full transition-colors whitespace-nowrap">
+                  <button 
+                    onClick={() => setShowEditModal(true)}
+                    className="px-4 py-1.5 border border-[#CFD9DE] hover:bg-[#F7F9F9] text-[#0F1419] font-bold text-[14px] rounded-full transition-colors whitespace-nowrap active:scale-95"
+                  >
                     Edit profile
                   </button>
                 </div>
               ) : (
                 <button
-                  onClick={() => setIsFollowing(f => !f)}
-                  className={`px-4 py-1.5 font-bold text-[14px] rounded-full transition-colors whitespace-nowrap ${
+                  onClick={handleToggleFollow}
+                  className={`px-5 py-1.5 font-bold text-[14px] rounded-full transition-colors whitespace-nowrap active:scale-95 ${
                     isFollowing
                       ? 'border border-[#CFD9DE] hover:border-red-300 hover:text-red-600 hover:bg-red-50 text-[#0F1419]'
                       : 'bg-[#0F1419] hover:bg-[#272c30] text-white'
@@ -142,14 +236,14 @@ const Profile = () => {
 
           {/* Stats */}
           <div className="flex items-center gap-5 mt-3 text-[15px]">
-            <button className="hover:underline">
+            <div className="hover:underline cursor-pointer">
               <span className="font-bold text-[#0F1419]">{user?.following}</span>{' '}
               <span className="text-[#536471]">Following</span>
-            </button>
-            <button className="hover:underline">
+            </div>
+            <div className="hover:underline cursor-pointer">
               <span className="font-bold text-[#0F1419]">{user?.followers}</span>{' '}
               <span className="text-[#536471]">Followers</span>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -159,7 +253,7 @@ const Profile = () => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 min-w-[80px] px-4 py-4 text-[15px] transition-colors relative whitespace-nowrap
+              className={`flex-1 min-w-[80px] px-4 py-3.5 text-[15px] transition-colors relative whitespace-nowrap
                 ${activeTab === tab ? 'font-bold text-[#0F1419]' : 'text-[#536471] hover:bg-[#F7F9F9]'}`}
             >
               {tab}
@@ -170,47 +264,94 @@ const Profile = () => {
           ))}
         </div>
 
-        {/* Feed */}
-        <div className="pb-[80px] md:pb-4">
-          {posts.map(post => (
-            <article key={post.id} className="flex gap-3 px-4 py-3 border-b border-[#EFF3F4] hover:bg-[#F7F9F9] active:bg-[#F7F9F9] cursor-pointer transition-colors group">
-              <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                <img src={post.avatar} alt="" className="w-full h-full object-cover" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-[14px] sm:text-[15px] min-w-0 flex-1 flex-wrap">
-                    <span className="font-bold text-[#0F1419] truncate">{post.name}</span>
-                    <span className="text-[#536471] truncate hidden sm:inline">@{post.username} · {post.date}</span>
-                    <span className="text-[#536471] truncate sm:hidden">· {post.date}</span>
+        {/* User Posts Timeline */}
+        <div className="pb-[80px] md:pb-12">
+          {postsLoading ? (
+            <div className="divide-y divide-[#EFF3F4]">
+              {[1, 2].map(i => (
+                <div key={i} className="flex gap-3 px-4 py-4 animate-pulse">
+                  <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
+                  <div className="flex-1 space-y-2.5">
+                    <div className="h-4 bg-gray-200 rounded w-1/4" />
+                    <div className="h-3 bg-gray-200 rounded w-3/4" />
                   </div>
-                  <button className="p-1.5 -mr-1 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:bg-[#7C3AED]/10 active:text-[#7C3AED] text-[#536471] md:opacity-0 md:group-hover:opacity-100 transition-all flex-shrink-0">
-                    <MoreHorizontal size={17} />
-                  </button>
                 </div>
-                <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-0.5 leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
-                <div className="flex justify-between items-center mt-3 text-[#536471] max-w-[300px] sm:max-w-[360px] -ml-2">
-                  <button className="flex items-center gap-1 sm:gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:text-[#7C3AED] transition-colors">
-                    <MessageCircle size={17} strokeWidth={1.8} /><span className="text-[13px]">{post.replies}</span>
-                  </button>
-                  <button className="flex items-center gap-1.5 p-2 rounded-full hover:bg-green-50 hover:text-green-600 active:text-green-600 transition-colors">
-                    <Repeat2 size={17} strokeWidth={1.8} /><span className="text-[13px]">{post.retweets}</span>
-                  </button>
-                  <button className="flex items-center gap-1.5 p-2 rounded-full hover:bg-pink-50 hover:text-pink-600 active:text-pink-600 transition-colors">
-                    <Heart size={17} strokeWidth={1.8} /><span className="text-[13px]">{post.likes}</span>
-                  </button>
-                  <button className="flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:text-[#7C3AED] transition-colors">
-                    <BarChart2 size={17} strokeWidth={1.8} /><span className="text-[13px]">{post.views}</span>
-                  </button>
-                  <button className="flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:text-[#7C3AED] transition-colors">
-                    <Share size={17} strokeWidth={1.8} />
-                  </button>
-                </div>
+              ))}
+            </div>
+          ) : activeTab !== 'Posts' ? (
+            <div className="p-8 text-center text-[#536471]">
+              <p className="text-[15px]">No {activeTab.toLowerCase()} yet.</p>
+            </div>
+          ) : posts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="w-12 h-12 rounded-full bg-gray-100 text-[#536471] flex items-center justify-center mb-3">
+                <Sparkles size={22} />
               </div>
-            </article>
-          ))}
+              <h3 className="font-bold text-[18px] text-[#0F1419] mb-1">@{user?.username} hasn't posted yet</h3>
+              <p className="text-[14px] text-[#536471] max-w-xs">
+                When they post updates, they will appear here.
+              </p>
+            </div>
+          ) : (
+            posts.map(post => (
+              <PostCard
+                key={post.id}
+                post={post}
+                onNavigate={navigate}
+                onPostDeleted={handlePostDeleted}
+                onPostUpdated={handlePostUpdated}
+              />
+            ))
+          )}
         </div>
       </div>
+
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-[480px] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-[#EFF3F4]">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="p-1.5 -ml-1 text-[#0F1419] hover:bg-[#EFF3F4] rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+                <h3 className="font-bold text-[18px] text-[#0F1419]">Edit profile</h3>
+              </div>
+              <button
+                onClick={handleSaveBio}
+                disabled={isSavingBio}
+                className="px-5 py-1.5 bg-[#0F1419] hover:bg-[#272c30] disabled:opacity-50 text-white font-bold text-[14px] rounded-full transition-colors"
+              >
+                {isSavingBio ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+
+            <div className="pt-4">
+              <label className="block text-[13px] font-bold text-[#536471] mb-1.5">Bio</label>
+              <textarea
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                maxLength={200}
+                rows={3}
+                placeholder="Describe who you are, what you build, and what technologies you love..."
+                className="w-full p-3 border border-[#CFD9DE] focus:border-[#7C3AED] focus:ring-1 focus:ring-[#7C3AED] rounded-xl text-[15px] outline-none resize-none leading-relaxed text-[#0F1419]"
+              />
+              <div className="flex justify-end text-[12px] text-[#536471] mt-1">
+                {editBio.length}/200
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 };

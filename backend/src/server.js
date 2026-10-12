@@ -19,11 +19,13 @@ const port = process.env.PORT || 5005;
 
 import authRoutes from "./modules/auth/auth.routes.js";
 import userRoutes from "./modules/users/user.routes.js";
+import postRoutes from "./modules/posts/post.routes.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/posts", postRoutes);
 
 // TEMPORARY ENDPOINT FOR LOAD TESTING (DAY 8) & PAGINATION (DAY 10)
 app.get("/api/v1/test/feed/:user_id", async (req, res, next) => {
