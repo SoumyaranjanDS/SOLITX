@@ -40,8 +40,20 @@ const runMigrations = async () => {
     );
   `;
 
+  const createCommentsTableQuery = `
+    CREATE TABLE IF NOT EXISTS comments (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content VARCHAR(500) NOT NULL,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
   const createIndexesQuery = `
     CREATE INDEX IF NOT EXISTS idx_posts_user_id_created_at ON posts (user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_comments_post_id_created_at ON comments (post_id, created_at ASC);
   `;
 
   try {
@@ -58,6 +70,9 @@ const runMigrations = async () => {
 
     await pool.query(createLikesTableQuery);
     console.log("'likes' table created/verified successfully!");
+
+    await pool.query(createCommentsTableQuery);
+    console.log("'comments' table created/verified successfully!");
 
     await pool.query(createIndexesQuery);
     console.log("B-Tree Indexes created/verified successfully!");

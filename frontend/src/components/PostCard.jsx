@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Heart, 
   Repeat2, 
@@ -12,6 +12,7 @@ import {
   X 
 } from 'lucide-react';
 import api from '../api';
+import CommentModal from './CommentModal';
 
 // Helper to format timestamps like Twitter (e.g. 5m, 2h, Oct 12)
 export const formatRelativeTime = (timestamp) => {
@@ -39,6 +40,16 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
   const [likeCount, setLikeCount] = useState(parseInt(post.likes_count, 10) || 0);
   const [isLiking, setIsLiking] = useState(false);
   const [reposted, setReposted] = useState(false);
+
+  // Reply State
+  const [replyCount, setReplyCount] = useState(parseInt(post.replies_count, 10) || 0);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+
+  useEffect(() => {
+    if (post.replies_count !== undefined) {
+      setReplyCount(parseInt(post.replies_count, 10) || 0);
+    }
+  }, [post.replies_count]);
 
   // Menu and Modals
   const [showMenu, setShowMenu] = useState(false);
@@ -281,11 +292,13 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                setShowCommentModal(true);
               }}
               className="flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:bg-[#7C3AED]/10 transition-colors group/reply"
+              title="Reply"
             >
               <MessageCircle size={17} strokeWidth={1.8} className="group-hover/reply:text-[#7C3AED]" />
-              <span className="text-[12px] sm:text-[13px]">0</span>
+              <span className="text-[12px] sm:text-[13px]">{replyCount}</span>
             </button>
 
             {/* Repost */}
@@ -365,6 +378,19 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
           </div>
         </div>
       )}
+
+      {/* Threaded Comment / Reply Modal */}
+      <CommentModal
+        isOpen={showCommentModal}
+        onClose={() => setShowCommentModal(false)}
+        post={post}
+        onReplyCountUpdated={(count) => {
+          setReplyCount(count);
+          if (onPostUpdated) {
+            onPostUpdated({ ...post, replies_count: count });
+          }
+        }}
+      />
     </>
   );
 };

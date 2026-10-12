@@ -33,7 +33,7 @@ jobs:
           REMOTE_HOST: ${{ secrets.SERVER_HOST }}
           REMOTE_USER: ${{ secrets.SERVER_USER }}
           TARGET: "/var/www/solitx"
-          EXCLUDE: "/frontend/node_modules/, /backend/node_modules/, /.git/"
+          EXCLUDE: "/frontend/node_modules/, /backend/node_modules/, /.git/, /backend/.env, /frontend/.env, /frontend/.env.local, /frontend/.env.production"
 
       - name: Restart Backend with PM2
         uses: appleboy/ssh-action@master

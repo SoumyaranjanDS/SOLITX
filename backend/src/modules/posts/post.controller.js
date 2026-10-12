@@ -35,6 +35,7 @@ export const createPost = async (req, res, next) => {
       username: author.username,
       author_bio: author.bio,
       likes_count: 0,
+      replies_count: 0,
       has_liked: false,
     };
 
@@ -68,6 +69,7 @@ export const getFeed = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -87,6 +89,7 @@ export const getFeed = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -107,6 +110,7 @@ export const getFeed = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             false as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -126,6 +130,7 @@ export const getFeed = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             false as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -186,6 +191,7 @@ export const getUserPosts = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -205,6 +211,7 @@ export const getUserPosts = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -226,6 +233,7 @@ export const getUserPosts = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             false as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -245,6 +253,7 @@ export const getUserPosts = async (req, res, next) => {
             u.username,
             u.bio as author_bio,
             (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
             false as has_liked
           FROM posts p
           JOIN users u ON p.user_id = u.id
@@ -296,6 +305,7 @@ export const getPostById = async (req, res, next) => {
           u.username,
           u.bio as author_bio,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+          (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
         FROM posts p
         JOIN users u ON p.user_id = u.id
@@ -313,6 +323,7 @@ export const getPostById = async (req, res, next) => {
           u.username,
           u.bio as author_bio,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+          (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked
         FROM posts p
         JOIN users u ON p.user_id = u.id
@@ -441,6 +452,132 @@ export const toggleLike = async (req, res, next) => {
 
     return res.status(200).json(
       new ApiResponse(200, { liked, likes_count: likesCount }, liked ? "Post liked" : "Post unliked")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 8. Create Comment / Reply on Post ──────────────────────────────────────
+export const createComment = async (req, res, next) => {
+  try {
+    const { id: postId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      throw new AppError(400, "Comment cannot be empty");
+    }
+
+    if (content.trim().length > 500) {
+      throw new AppError(400, "Comment cannot exceed 500 characters");
+    }
+
+    // Verify post exists
+    const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [postId]);
+    if (postCheck.rowCount === 0) {
+      throw new AppError(404, "Post not found");
+    }
+
+    // Insert comment
+    const insertQuery = `
+      INSERT INTO comments (post_id, user_id, content)
+      VALUES ($1, $2, $3)
+      RETURNING id, post_id, user_id, content, created_at, updated_at;
+    `;
+    const result = await pool.query(insertQuery, [postId, userId, content.trim()]);
+    const comment = result.rows[0];
+
+    // Fetch author info
+    const userResult = await pool.query("SELECT username, bio FROM users WHERE id = $1", [userId]);
+    const author = userResult.rows[0];
+
+    const fullComment = {
+      ...comment,
+      author_id: userId,
+      username: author.username,
+      author_bio: author.bio,
+    };
+
+    // Also get updated replies count for post
+    const countResult = await pool.query("SELECT COUNT(*)::int as count FROM comments WHERE post_id = $1", [postId]);
+
+    return res.status(201).json(
+      new ApiResponse(201, { comment: fullComment, replies_count: countResult.rows[0].count }, "Reply posted successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 9. Get Comments for a Post ─────────────────────────────────────────────
+export const getComments = async (req, res, next) => {
+  try {
+    const { id: postId } = req.params;
+
+    // Verify post exists
+    const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [postId]);
+    if (postCheck.rowCount === 0) {
+      throw new AppError(404, "Post not found");
+    }
+
+    const query = `
+      SELECT 
+        c.id,
+        c.post_id,
+        c.content,
+        c.created_at,
+        c.updated_at,
+        u.id as author_id,
+        u.username,
+        u.bio as author_bio
+      FROM comments c
+      JOIN users u ON c.user_id = u.id
+      WHERE c.post_id = $1
+      ORDER BY c.created_at ASC;
+    `;
+    const result = await pool.query(query, [postId]);
+
+    return res.status(200).json(
+      new ApiResponse(200, { comments: result.rows, count: result.rowCount }, "Comments fetched successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 10. Delete Comment (Comment Author or Post Author) ──────────────────────
+export const deleteComment = async (req, res, next) => {
+  try {
+    const { id: commentId } = req.params;
+    const userId = req.user.id;
+
+    // Find comment and post author
+    const query = `
+      SELECT c.user_id as comment_author_id, p.user_id as post_author_id, c.post_id
+      FROM comments c
+      JOIN posts p ON c.post_id = p.id
+      WHERE c.id = $1;
+    `;
+    const result = await pool.query(query, [commentId]);
+
+    if (result.rowCount === 0) {
+      throw new AppError(404, "Comment not found");
+    }
+
+    const { comment_author_id, post_author_id, post_id } = result.rows[0];
+
+    if (comment_author_id !== userId && post_author_id !== userId) {
+      throw new AppError(403, "Forbidden: You are not authorized to delete this comment");
+    }
+
+    await pool.query("DELETE FROM comments WHERE id = $1", [commentId]);
+
+    // Updated count
+    const countResult = await pool.query("SELECT COUNT(*)::int as count FROM comments WHERE post_id = $1", [post_id]);
+
+    return res.status(200).json(
+      new ApiResponse(200, { id: commentId, post_id, replies_count: countResult.rows[0].count }, "Comment deleted successfully")
     );
   } catch (error) {
     next(error);
