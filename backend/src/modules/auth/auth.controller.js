@@ -14,10 +14,28 @@ const generateToken = (userId) => {
 
 export const registerUser = async (req, res, next) => {
   try {
-    const { username, email, password } = req.body;
+    let { username, email, password } = req.body;
 
-    if (!username || !email || !password) {
-      throw new AppError(400, "Please provide username, email, and password");
+    if (!email || !password) {
+      throw new AppError(400, "Please provide email and password");
+    }
+
+    // Auto-generate provisional username if not supplied
+    if (!username || !username.trim()) {
+      const emailPrefix = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 12).toLowerCase() || 'user';
+      let candidate = `${emailPrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
+      let isUnique = false;
+      while (!isUnique) {
+        const check = await pool.query("SELECT 1 FROM users WHERE username = $1", [candidate]);
+        if (check.rowCount === 0) {
+          isUnique = true;
+          username = candidate;
+        } else {
+          candidate = `${emailPrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
+        }
+      }
+    } else {
+      username = username.trim().toLowerCase();
     }
 
     // 1. Check if user already exists

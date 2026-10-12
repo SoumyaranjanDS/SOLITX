@@ -20,6 +20,9 @@ const Auth = () => {
       const data = response.data;
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
+      if (!isLogin) {
+        localStorage.setItem('show_onboarding', 'true');
+      }
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Authentication failed');
@@ -91,23 +94,6 @@ const Auth = () => {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           
-          {/* Username (Register only) */}
-          {!isLogin && (
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail size={18} className="text-[#9CA3AF]" />
-              </div>
-              <input
-                type="text"
-                placeholder="Username"
-                className="w-full h-[48px] pl-11 pr-4 bg-[#F3F4F6] hover:bg-[#E5E7EB] focus:bg-white border border-transparent focus:border-[#7C3AED] rounded-xl text-[14px] text-[#0F1419] outline-none transition-all placeholder:text-[#9CA3AF]"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                required={!isLogin}
-              />
-            </div>
-          )}
-
           {/* Email */}
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -145,11 +131,20 @@ const Auth = () => {
             </button>
           </div>
 
-          {/* Forgot Password */}
-          <div className="flex justify-end mt-1 mb-2">
-            <button type="button" className="text-[13px] text-[#0F1419] font-medium hover:underline">
-              Forgot password?
-            </button>
+          {/* Forgot Password / Register Hint */}
+          <div className="flex justify-between items-center mt-1 mb-2">
+            {!isLogin ? (
+              <span className="text-[12px] text-[#536471]">
+                You'll pick your unique @handle in the next step.
+              </span>
+            ) : (
+              <>
+                <div />
+                <button type="button" className="text-[13px] text-[#0F1419] font-medium hover:underline">
+                  Forgot password?
+                </button>
+              </>
+            )}
           </div>
 
           {/* Submit Button */}

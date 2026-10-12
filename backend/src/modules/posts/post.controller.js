@@ -1,11 +1,12 @@
 import pool from "../../config/db.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
+import { createNotification } from "../../services/notificationService.js";
 
 // ─── 1. Create Post ──────────────────────────────────────────────────────────
 export const createPost = async (req, res, next) => {
   try {
-    const { content } = req.body;
+    const { content, category: reqCategory, community_id } = req.body;
     const userId = req.user.id;
 
     if (!content || typeof content !== "string" || content.trim().length === 0) {
@@ -16,27 +17,77 @@ export const createPost = async (req, res, next) => {
       throw new AppError(400, "Post content cannot exceed 500 characters");
     }
 
+    // Auto-detect topic category from text & hashtags if not explicitly provided
+    let category = (reqCategory || '').trim();
+    if (!category || category === 'General') {
+      const lower = content.toLowerCase();
+      if (/#(tech|ai|ml|python|javascript|coding|code|webdev|software|dev|developer|react|vue|node|nextjs|postgres|database)\b/i.test(lower)) {
+        category = 'Tech & AI';
+      } else if (/#(business|startup|finance|crypto|money|economy|stocks|founder|vc|market)\b/i.test(lower)) {
+        category = 'Business';
+      } else if (/#(sports|football|cricket|nba|f1|soccer|fifa|tennis|athletics)\b/i.test(lower)) {
+        category = 'Sports';
+      } else if (/#(news|breaking|politics|world|currentaffairs|report)\b/i.test(lower)) {
+        category = 'News';
+      } else if (/#(entertainment|movie|movies|music|gaming|game|anime|hollywood|bollywood|tv)\b/i.test(lower)) {
+        category = 'Entertainment';
+      } else {
+        category = 'General';
+      }
+    }
+
+    let validCommunityId = null;
+    let communityInfo = null;
+    if (community_id) {
+      const commCheck = await pool.query(
+        "SELECT id, name, slug, creator_id FROM communities WHERE id::text = $1 OR slug = $1",
+        [String(community_id)]
+      );
+      if (commCheck.rowCount > 0) {
+        validCommunityId = commCheck.rows[0].id;
+        communityInfo = commCheck.rows[0];
+
+        // PROTECT: Verify user is an active member or creator of the community
+        const membershipCheck = await pool.query(
+          `SELECT 1 FROM community_members WHERE community_id = $1 AND user_id = $2
+           UNION
+           SELECT 1 FROM communities WHERE id = $1 AND creator_id = $2`,
+          [validCommunityId, userId]
+        );
+
+        if (membershipCheck.rowCount === 0) {
+          throw new AppError(403, `You must join c/${communityInfo.slug} before you can post discussions in this community`);
+        }
+      }
+    }
+
     const insertQuery = `
-      INSERT INTO posts (user_id, content)
-      VALUES ($1, $2)
-      RETURNING id, user_id, content, created_at, updated_at;
+      INSERT INTO posts (user_id, content, views_count, category, community_id)
+      VALUES ($1, $2, 1, $3, $4)
+      RETURNING id, user_id, content, category, community_id, views_count, created_at, updated_at;
     `;
-    const result = await pool.query(insertQuery, [userId, content.trim()]);
+    const result = await pool.query(insertQuery, [userId, content.trim(), category, validCommunityId]);
     const post = result.rows[0];
 
     // Fetch author info to return complete post object for immediate UI render
-    const userQuery = `SELECT id, username, bio FROM users WHERE id = $1;`;
+    const userQuery = `SELECT id, name, username, bio FROM users WHERE id = $1;`;
     const userResult = await pool.query(userQuery, [userId]);
     const author = userResult.rows[0];
 
     const fullPost = {
       ...post,
       author_id: author.id,
+      author_name: author.name || author.username,
       username: author.username,
       author_bio: author.bio,
+      community_id: validCommunityId,
+      community_name: communityInfo?.name || null,
+      community_slug: communityInfo?.slug || null,
       likes_count: 0,
       replies_count: 0,
+      views_count: 1,
       has_liked: false,
+      has_bookmarked: false,
     };
 
     return res
@@ -47,99 +98,188 @@ export const createPost = async (req, res, next) => {
   }
 };
 
-// ─── 2. Get Global Feed (Cursor-based Pagination) ───────────────────────────
+// ─── Live Trending Algorithm ───────────────────────────────────────────────
+export const getTrendingTopics = async (req, res, next) => {
+  try {
+    const query = `
+      SELECT 
+        '#' || LOWER(match_val) as tag, 
+        COUNT(*)::int as post_count 
+      FROM (
+        SELECT (regexp_matches(content, '#([A-Za-z0-9_]+)', 'g'))[1] as match_val 
+        FROM posts
+      ) sub 
+      GROUP BY LOWER(match_val) 
+      ORDER BY post_count DESC, tag ASC 
+      LIMIT 10;
+    `;
+    const result = await pool.query(query);
+
+    const trends = result.rows.map((row, index) => ({
+      rank: index + 1,
+      tag: row.tag,
+      posts: row.post_count,
+      formatted_posts: row.post_count > 999 
+        ? `${(row.post_count / 1000).toFixed(1)}K` 
+        : `${row.post_count} ${row.post_count === 1 ? 'post' : 'posts'}`
+    }));
+
+    return res.status(200).json(
+      new ApiResponse(200, { trends }, "Live trending topics fetched successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 2. Get Global Feed (Cursor-based Pagination & Filtering) ───────────────────────────
 export const getFeed = async (req, res, next) => {
   try {
     const cursor = req.query.cursor;
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const filter = (req.query.filter || req.query.type || '').toLowerCase();
+    const category = (req.query.category || '').trim();
     const currentUserId = req.user?.id || null;
 
-    let query;
-    let params;
-
-    if (currentUserId) {
-      if (cursor) {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.created_at < $2
-          ORDER BY p.created_at DESC
-          LIMIT $3;
-        `;
-        params = [currentUserId, cursor, limit];
-      } else {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          ORDER BY p.created_at DESC
-          LIMIT $2;
-        `;
-        params = [currentUserId, limit];
-      }
-    } else {
-      if (cursor) {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            false as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.created_at < $1
-          ORDER BY p.created_at DESC
-          LIMIT $2;
-        `;
-        params = [cursor, limit];
-      } else {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            false as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          ORDER BY p.created_at DESC
-          LIMIT $1;
-        `;
-        params = [limit];
-      }
+    // If following tab requested by unauthenticated user, return empty feed
+    if (filter === 'following' && !currentUserId) {
+      return res.status(200).json(
+        new ApiResponse(200, { posts: [], nextCursor: null, count: 0 }, "Feed fetched successfully")
+      );
     }
+
+    // Search query support for Explore & Search bar
+    const search = (req.query.q || req.query.search || req.query.tag || '').trim();
+    if (search) {
+      const searchParam = `%${search}%`;
+      const sQuery = currentUserId ? `
+        SELECT 
+          p.id,
+          p.content,
+          p.category,
+          p.community_id,
+          comm.name as community_name,
+          comm.slug as community_slug,
+          p.created_at,
+          p.updated_at,
+          COALESCE(p.views_count, 0) as views_count,
+          u.id as author_id,
+          u.name as author_name,
+          u.username,
+          u.bio as author_bio,
+          (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+          (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+          EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked
+        FROM posts p
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN communities comm ON p.community_id = comm.id
+        WHERE p.content ILIKE $2 OR u.username ILIKE $2 OR u.name ILIKE $2
+        ORDER BY p.created_at DESC
+        LIMIT $3;
+      ` : `
+        SELECT 
+          p.id,
+          p.content,
+          p.category,
+          p.community_id,
+          comm.name as community_name,
+          comm.slug as community_slug,
+          p.created_at,
+          p.updated_at,
+          COALESCE(p.views_count, 0) as views_count,
+          u.id as author_id,
+          u.name as author_name,
+          u.username,
+          u.bio as author_bio,
+          (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+          (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+          false as has_liked,
+          false as has_bookmarked
+        FROM posts p
+        JOIN users u ON p.user_id = u.id
+        LEFT JOIN communities comm ON p.community_id = comm.id
+        WHERE p.content ILIKE $1 OR u.username ILIKE $1 OR u.name ILIKE $1
+        ORDER BY p.created_at DESC
+        LIMIT $2;
+      `;
+      const sParams = currentUserId ? [currentUserId, searchParam, limit] : [searchParam, limit];
+      const sResult = await pool.query(sQuery, sParams);
+      return res.status(200).json(
+        new ApiResponse(200, { posts: sResult.rows, nextCursor: null, count: sResult.rowCount }, "Search results fetched successfully")
+      );
+    }
+
+    let whereClauses = [];
+    let params = [];
+    let paramIndex = 1;
+
+    let userParamIndex = null;
+    if (currentUserId) {
+      params.push(currentUserId);
+      userParamIndex = paramIndex++;
+    }
+
+    let joinFollows = false;
+    if (filter === 'following') {
+      joinFollows = true;
+    }
+
+    if (category) {
+      params.push(category);
+      const catIdx = paramIndex++;
+      const cleanTag = category.replace(/[^a-zA-Z0-9]/g, '');
+      params.push(`%#${cleanTag}%`);
+      const tagIdx = paramIndex++;
+      whereClauses.push(`(p.category ILIKE $${catIdx} OR p.content ILIKE $${tagIdx})`);
+    }
+
+    if (cursor) {
+      params.push(cursor);
+      whereClauses.push(`p.created_at < $${paramIndex++}`);
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const followJoinSql = joinFollows ? `JOIN follows f ON f.following_id = p.user_id AND f.follower_id = $${userParamIndex}` : '';
+
+    let orderSql = 'ORDER BY p.created_at DESC';
+    if (filter === 'trending') {
+      orderSql = 'ORDER BY ((SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) * 3 + (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) * 2 + COALESCE(p.views_count, 0)) DESC, p.created_at DESC';
+    }
+
+    params.push(limit);
+    const limitIdx = paramIndex++;
+
+    const selectLiked = currentUserId ? `EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $${userParamIndex}) as has_liked` : 'false as has_liked';
+    const selectBookmarked = currentUserId ? `EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $${userParamIndex}) as has_bookmarked` : 'false as has_bookmarked';
+
+    const query = `
+      SELECT 
+        p.id,
+        p.content,
+        p.category,
+        p.community_id,
+        comm.name as community_name,
+        comm.slug as community_slug,
+        p.created_at,
+        p.updated_at,
+        COALESCE(p.views_count, 0) as views_count,
+        u.id as author_id,
+        u.name as author_name,
+        u.username,
+        u.bio as author_bio,
+        (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+        (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+        ${selectLiked},
+        ${selectBookmarked}
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN communities comm ON p.community_id = comm.id
+      ${followJoinSql}
+      ${whereSql}
+      ${orderSql}
+      LIMIT $${limitIdx};
+    `;
 
     const result = await pool.query(query, params);
     const posts = result.rows;
@@ -167,6 +307,7 @@ export const getUserPosts = async (req, res, next) => {
     const { username } = req.params;
     const cursor = req.query.cursor;
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const tab = (req.query.tab || 'posts').toLowerCase();
     const currentUserId = req.user?.id || null;
 
     // Check user exists
@@ -179,105 +320,449 @@ export const getUserPosts = async (req, res, next) => {
     let query;
     let params;
 
-    if (currentUserId) {
-      if (cursor) {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.user_id = $2 AND p.created_at < $3
-          ORDER BY p.created_at DESC
-          LIMIT $4;
-        `;
-        params = [currentUserId, profileUserId, cursor, limit];
+    if (tab === 'likes') {
+      // ─── TAB: LIKES (Posts liked by this profile user) ───
+      if (currentUserId) {
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              lk.created_at as liked_at
+            FROM likes lk
+            JOIN posts p ON lk.post_id = p.id
+            JOIN users u ON p.user_id = u.id
+            WHERE lk.user_id = $2 AND lk.created_at < $3
+            ORDER BY lk.created_at DESC
+            LIMIT $4;
+          `;
+          params = [currentUserId, profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              lk.created_at as liked_at
+            FROM likes lk
+            JOIN posts p ON lk.post_id = p.id
+            JOIN users u ON p.user_id = u.id
+            WHERE lk.user_id = $2
+            ORDER BY lk.created_at DESC
+            LIMIT $3;
+          `;
+          params = [currentUserId, profileUserId, limit];
+        }
       } else {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.user_id = $2
-          ORDER BY p.created_at DESC
-          LIMIT $3;
-        `;
-        params = [currentUserId, profileUserId, limit];
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked,
+              lk.created_at as liked_at
+            FROM likes lk
+            JOIN posts p ON lk.post_id = p.id
+            JOIN users u ON p.user_id = u.id
+            WHERE lk.user_id = $1 AND lk.created_at < $2
+            ORDER BY lk.created_at DESC
+            LIMIT $3;
+          `;
+          params = [profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked,
+              lk.created_at as liked_at
+            FROM likes lk
+            JOIN posts p ON lk.post_id = p.id
+            JOIN users u ON p.user_id = u.id
+            WHERE lk.user_id = $1
+            ORDER BY lk.created_at DESC
+            LIMIT $2;
+          `;
+          params = [profileUserId, limit];
+        }
+      }
+    } else if (tab === 'replies') {
+      // ─── TAB: REPLIES (Comments made by this profile user) ───
+      if (currentUserId) {
+        if (cursor) {
+          query = `
+            SELECT 
+              c.id,
+              c.content,
+              c.created_at,
+              c.updated_at,
+              c.parent_id,
+              c.post_id,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              p.content as parent_post_content,
+              pu.username as parent_post_author_username,
+              pu.name as parent_post_author_name,
+              (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments cr WHERE cr.parent_id = c.id) as replies_count,
+              EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $1) as has_liked
+            FROM comments c
+            JOIN users u ON c.user_id = u.id
+            JOIN posts p ON c.post_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            WHERE c.user_id = $2 AND c.created_at < $3
+            ORDER BY c.created_at DESC
+            LIMIT $4;
+          `;
+          params = [currentUserId, profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              c.id,
+              c.content,
+              c.created_at,
+              c.updated_at,
+              c.parent_id,
+              c.post_id,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              p.content as parent_post_content,
+              pu.username as parent_post_author_username,
+              pu.name as parent_post_author_name,
+              (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments cr WHERE cr.parent_id = c.id) as replies_count,
+              EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $1) as has_liked
+            FROM comments c
+            JOIN users u ON c.user_id = u.id
+            JOIN posts p ON c.post_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            WHERE c.user_id = $2
+            ORDER BY c.created_at DESC
+            LIMIT $3;
+          `;
+          params = [currentUserId, profileUserId, limit];
+        }
+      } else {
+        if (cursor) {
+          query = `
+            SELECT 
+              c.id,
+              c.content,
+              c.created_at,
+              c.updated_at,
+              c.parent_id,
+              c.post_id,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              p.content as parent_post_content,
+              pu.username as parent_post_author_username,
+              pu.name as parent_post_author_name,
+              (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments cr WHERE cr.parent_id = c.id) as replies_count,
+              false as has_liked
+            FROM comments c
+            JOIN users u ON c.user_id = u.id
+            JOIN posts p ON c.post_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            WHERE c.user_id = $1 AND c.created_at < $2
+            ORDER BY c.created_at DESC
+            LIMIT $3;
+          `;
+          params = [profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              c.id,
+              c.content,
+              c.created_at,
+              c.updated_at,
+              c.parent_id,
+              c.post_id,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              p.content as parent_post_content,
+              pu.username as parent_post_author_username,
+              pu.name as parent_post_author_name,
+              (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments cr WHERE cr.parent_id = c.id) as replies_count,
+              false as has_liked
+            FROM comments c
+            JOIN users u ON c.user_id = u.id
+            JOIN posts p ON c.post_id = p.id
+            JOIN users pu ON p.user_id = pu.id
+            WHERE c.user_id = $1
+            ORDER BY c.created_at DESC
+            LIMIT $2;
+          `;
+          params = [profileUserId, limit];
+        }
+      }
+    } else if (tab === 'media') {
+      // ─── TAB: MEDIA (Posts containing images or media links) ───
+      const mediaPattern = `(https?://[^\\s]+(\\.(jpg|jpeg|png|gif|webp|svg|bmp)|images\\.unsplash\\.com|imgur\\.com|i\\.pinimg\\.com|media\\.giphy\\.com|res\\.cloudinary\\.com))`;
+      if (currentUserId) {
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $2
+              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND p.created_at < $3
+            ORDER BY p.created_at DESC
+            LIMIT $4;
+          `;
+          params = [currentUserId, profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $2
+              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+            ORDER BY p.created_at DESC
+            LIMIT $3;
+          `;
+          params = [currentUserId, profileUserId, limit];
+        }
+      } else {
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $1
+              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND p.created_at < $2
+            ORDER BY p.created_at DESC
+            LIMIT $3;
+          `;
+          params = [profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $1
+              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+            ORDER BY p.created_at DESC
+            LIMIT $2;
+          `;
+          params = [profileUserId, limit];
+        }
       }
     } else {
-      if (cursor) {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            false as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.user_id = $1 AND p.created_at < $2
-          ORDER BY p.created_at DESC
-          LIMIT $3;
-        `;
-        params = [profileUserId, cursor, limit];
+      // ─── TAB: POSTS (Authored by this user - DEFAULT) ───
+      if (currentUserId) {
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $2 AND p.created_at < $3
+            ORDER BY p.created_at DESC
+            LIMIT $4;
+          `;
+          params = [currentUserId, profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $2
+            ORDER BY p.created_at DESC
+            LIMIT $3;
+          `;
+          params = [currentUserId, profileUserId, limit];
+        }
       } else {
-        query = `
-          SELECT 
-            p.id,
-            p.content,
-            p.created_at,
-            p.updated_at,
-            u.id as author_id,
-            u.username,
-            u.bio as author_bio,
-            (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
-            (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-            false as has_liked
-          FROM posts p
-          JOIN users u ON p.user_id = u.id
-          WHERE p.user_id = $1
-          ORDER BY p.created_at DESC
-          LIMIT $2;
-        `;
-        params = [profileUserId, limit];
+        if (cursor) {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $1 AND p.created_at < $2
+            ORDER BY p.created_at DESC
+            LIMIT $3;
+          `;
+          params = [profileUserId, cursor, limit];
+        } else {
+          query = `
+            SELECT 
+              p.id,
+              p.content,
+              p.created_at,
+              p.updated_at,
+              COALESCE(p.views_count, 0) as views_count,
+              u.id as author_id,
+              u.name as author_name,
+              u.username,
+              u.bio as author_bio,
+              (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+              (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+              false as has_liked
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $1
+            ORDER BY p.created_at DESC
+            LIMIT $2;
+          `;
+          params = [profileUserId, limit];
+        }
       }
     }
 
     const result = await pool.query(query, params);
-    const posts = result.rows;
+    const items = result.rows;
 
     let nextCursor = null;
-    if (posts.length === limit) {
-      nextCursor = posts[posts.length - 1].created_at;
+    if (items.length === limit) {
+      nextCursor = tab === 'likes' && items[items.length - 1].liked_at
+        ? items[items.length - 1].liked_at
+        : items[items.length - 1].created_at;
     }
 
     return res.status(200).json(
       new ApiResponse(
         200,
-        { posts, nextCursor, count: posts.length },
-        "User posts fetched successfully"
+        { 
+          posts: items, 
+          items, 
+          replies: items, 
+          nextCursor, 
+          count: items.length, 
+          tab 
+        },
+        `User ${tab} fetched successfully`
       )
     );
   } catch (error) {
@@ -291,6 +776,12 @@ export const getPostById = async (req, res, next) => {
     const { id } = req.params;
     const currentUserId = req.user?.id || null;
 
+    // Increment views_count automatically on view
+    await pool.query(
+      "UPDATE posts SET views_count = COALESCE(views_count, 0) + 1 WHERE id = $1;",
+      [id]
+    );
+
     let query;
     let params;
 
@@ -299,16 +790,24 @@ export const getPostById = async (req, res, next) => {
         SELECT 
           p.id,
           p.content,
+          p.category,
+          p.community_id,
+          comm.name as community_name,
+          comm.slug as community_slug,
           p.created_at,
           p.updated_at,
+          COALESCE(p.views_count, 0) as views_count,
           u.id as author_id,
+          u.name as author_name,
           u.username,
           u.bio as author_bio,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-          EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+          EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked
         FROM posts p
         JOIN users u ON p.user_id = u.id
+        LEFT JOIN communities comm ON p.community_id = comm.id
         WHERE p.id = $2;
       `;
       params = [currentUserId, id];
@@ -317,16 +816,24 @@ export const getPostById = async (req, res, next) => {
         SELECT 
           p.id,
           p.content,
+          p.category,
+          p.community_id,
+          comm.name as community_name,
+          comm.slug as community_slug,
           p.created_at,
           p.updated_at,
+          COALESCE(p.views_count, 0) as views_count,
           u.id as author_id,
+          u.name as author_name,
           u.username,
           u.bio as author_bio,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-          false as has_liked
+          false as has_liked,
+          false as has_bookmarked
         FROM posts p
         JOIN users u ON p.user_id = u.id
+        LEFT JOIN communities comm ON p.community_id = comm.id
         WHERE p.id = $1;
       `;
       params = [id];
@@ -339,6 +846,25 @@ export const getPostById = async (req, res, next) => {
 
     return res.status(200).json(
       new ApiResponse(200, { post: result.rows[0] }, "Post fetched successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 4b. Record Post View (Explicit Impressions) ─────────────────────────────
+export const recordPostView = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "UPDATE posts SET views_count = COALESCE(views_count, 0) + 1 WHERE id = $1 RETURNING views_count;",
+      [id]
+    );
+    if (result.rowCount === 0) {
+      throw new AppError(404, "Post not found");
+    }
+    return res.status(200).json(
+      new ApiResponse(200, { views_count: result.rows[0].views_count }, "Post view recorded")
     );
   } catch (error) {
     next(error);
@@ -418,7 +944,7 @@ export const toggleLike = async (req, res, next) => {
     const userId = req.user.id;
 
     // Verify post exists
-    const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [id]);
+    const postCheck = await pool.query("SELECT id, user_id FROM posts WHERE id = $1", [id]);
     if (postCheck.rowCount === 0) {
       throw new AppError(404, "Post not found");
     }
@@ -441,6 +967,14 @@ export const toggleLike = async (req, res, next) => {
         [userId, id]
       );
       liked = true;
+
+      // In-app Notification to post author
+      await createNotification({
+        recipientId: postCheck.rows[0].user_id,
+        actorId: userId,
+        type: 'post_like',
+        postId: id,
+      });
     }
 
     // Get updated like count
@@ -462,7 +996,7 @@ export const toggleLike = async (req, res, next) => {
 export const createComment = async (req, res, next) => {
   try {
     const { id: postId } = req.params;
-    const { content } = req.body;
+    const { content, parent_id } = req.body;
     const userId = req.user.id;
 
     if (!content || typeof content !== "string" || content.trim().length === 0) {
@@ -474,19 +1008,63 @@ export const createComment = async (req, res, next) => {
     }
 
     // Verify post exists
-    const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [postId]);
+    const postCheck = await pool.query("SELECT id, user_id FROM posts WHERE id = $1", [postId]);
     if (postCheck.rowCount === 0) {
       throw new AppError(404, "Post not found");
     }
 
+    // If parent_id is provided, verify it exists and belongs to this post
+    let parentAuthorId = null;
+    if (parent_id) {
+      const parentCheck = await pool.query("SELECT id, user_id FROM comments WHERE id = $1 AND post_id = $2", [parent_id, postId]);
+      if (parentCheck.rowCount === 0) {
+        throw new AppError(404, "Parent comment not found");
+      }
+      parentAuthorId = parentCheck.rows[0].user_id;
+    }
+
     // Insert comment
     const insertQuery = `
-      INSERT INTO comments (post_id, user_id, content)
-      VALUES ($1, $2, $3)
-      RETURNING id, post_id, user_id, content, created_at, updated_at;
+      INSERT INTO comments (post_id, user_id, content, parent_id)
+      VALUES ($1, $2, $3, $4)
+      RETURNING id, post_id, user_id, content, parent_id, created_at, updated_at;
     `;
-    const result = await pool.query(insertQuery, [postId, userId, content.trim()]);
+    const result = await pool.query(insertQuery, [postId, userId, content.trim(), parent_id || null]);
     const comment = result.rows[0];
+
+    // Notification: Reply to comment vs Top-level comment
+    if (parent_id && parentAuthorId) {
+      // 1. Notify parent comment author
+      await createNotification({
+        recipientId: parentAuthorId,
+        actorId: userId,
+        type: 'comment_reply',
+        postId,
+        commentId: comment.id,
+        messageContent: content.trim(),
+      });
+      // 2. If post author is different, also notify them
+      if (postCheck.rows[0].user_id !== parentAuthorId) {
+        await createNotification({
+          recipientId: postCheck.rows[0].user_id,
+          actorId: userId,
+          type: 'post_comment',
+          postId,
+          commentId: comment.id,
+          messageContent: content.trim(),
+        });
+      }
+    } else {
+      // Top-level comment on post
+      await createNotification({
+        recipientId: postCheck.rows[0].user_id,
+        actorId: userId,
+        type: 'post_comment',
+        postId,
+        commentId: comment.id,
+        messageContent: content.trim(),
+      });
+    }
 
     // Fetch author info
     const userResult = await pool.query("SELECT username, bio FROM users WHERE id = $1", [userId]);
@@ -497,6 +1075,8 @@ export const createComment = async (req, res, next) => {
       author_id: userId,
       username: author.username,
       author_bio: author.bio,
+      likes_count: 0,
+      has_liked: false,
     };
 
     // Also get updated replies count for post
@@ -514,6 +1094,7 @@ export const createComment = async (req, res, next) => {
 export const getComments = async (req, res, next) => {
   try {
     const { id: postId } = req.params;
+    const currentUserId = req.user?.id || null;
 
     // Verify post exists
     const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [postId]);
@@ -521,22 +1102,52 @@ export const getComments = async (req, res, next) => {
       throw new AppError(404, "Post not found");
     }
 
-    const query = `
-      SELECT 
-        c.id,
-        c.post_id,
-        c.content,
-        c.created_at,
-        c.updated_at,
-        u.id as author_id,
-        u.username,
-        u.bio as author_bio
-      FROM comments c
-      JOIN users u ON c.user_id = u.id
-      WHERE c.post_id = $1
-      ORDER BY c.created_at ASC;
-    `;
-    const result = await pool.query(query, [postId]);
+    let query;
+    let params;
+
+    if (currentUserId) {
+      query = `
+        SELECT 
+          c.id,
+          c.post_id,
+          c.parent_id,
+          c.content,
+          c.created_at,
+          c.updated_at,
+          u.id as author_id,
+          u.username,
+          u.bio as author_bio,
+          (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+          EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) as has_liked
+        FROM comments c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.post_id = $1
+        ORDER BY c.created_at ASC;
+      `;
+      params = [postId, currentUserId];
+    } else {
+      query = `
+        SELECT 
+          c.id,
+          c.post_id,
+          c.parent_id,
+          c.content,
+          c.created_at,
+          c.updated_at,
+          u.id as author_id,
+          u.username,
+          u.bio as author_bio,
+          (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
+          false as has_liked
+        FROM comments c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.post_id = $1
+        ORDER BY c.created_at ASC;
+      `;
+      params = [postId];
+    }
+
+    const result = await pool.query(query, params);
 
     return res.status(200).json(
       new ApiResponse(200, { comments: result.rows, count: result.rowCount }, "Comments fetched successfully")
@@ -578,6 +1189,139 @@ export const deleteComment = async (req, res, next) => {
 
     return res.status(200).json(
       new ApiResponse(200, { id: commentId, post_id, replies_count: countResult.rows[0].count }, "Comment deleted successfully")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 11. Toggle Comment Like ───────────────────────────────────────────────
+export const toggleCommentLike = async (req, res, next) => {
+  try {
+    const { id: commentId } = req.params;
+    const userId = req.user.id;
+
+    // Check if comment exists
+    const commentCheck = await pool.query("SELECT id, user_id, post_id FROM comments WHERE id = $1", [commentId]);
+    if (commentCheck.rowCount === 0) {
+      throw new AppError(404, "Comment not found");
+    }
+
+    const likeCheck = await pool.query(
+      "SELECT 1 FROM comment_likes WHERE user_id = $1 AND comment_id = $2",
+      [userId, commentId]
+    );
+
+    let liked = false;
+    if (likeCheck.rowCount > 0) {
+      await pool.query(
+        "DELETE FROM comment_likes WHERE user_id = $1 AND comment_id = $2",
+        [userId, commentId]
+      );
+      liked = false;
+    } else {
+      await pool.query(
+        "INSERT INTO comment_likes (user_id, comment_id) VALUES ($1, $2)",
+        [userId, commentId]
+      );
+      liked = true;
+
+      // In-app Notification to comment author
+      await createNotification({
+        recipientId: commentCheck.rows[0].user_id,
+        actorId: userId,
+        type: 'comment_like',
+        postId: commentCheck.rows[0].post_id,
+        commentId,
+      });
+    }
+
+    const countResult = await pool.query(
+      "SELECT COUNT(*)::int as count FROM comment_likes WHERE comment_id = $1",
+      [commentId]
+    );
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        { liked, likes_count: countResult.rows[0].count },
+        liked ? "Comment liked successfully" : "Comment unliked successfully"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 12. Toggle Bookmark on Post ───────────────────────────────────────────
+export const toggleBookmark = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const postCheck = await pool.query("SELECT id FROM posts WHERE id = $1", [id]);
+    if (postCheck.rowCount === 0) {
+      throw new AppError(404, "Post not found");
+    }
+
+    const check = await pool.query(
+      "SELECT 1 FROM bookmarks WHERE user_id = $1 AND post_id = $2",
+      [userId, id]
+    );
+
+    let bookmarked = false;
+    if (check.rowCount > 0) {
+      await pool.query("DELETE FROM bookmarks WHERE user_id = $1 AND post_id = $2", [userId, id]);
+      bookmarked = false;
+    } else {
+      await pool.query(
+        "INSERT INTO bookmarks (user_id, post_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        [userId, id]
+      );
+      bookmarked = true;
+    }
+
+    return res.status(200).json(
+      new ApiResponse(200, { bookmarked }, bookmarked ? "Post bookmarked" : "Bookmark removed")
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── 13. Get User's Bookmarks ──────────────────────────────────────────────
+export const getBookmarks = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const query = `
+      SELECT 
+        p.id,
+        p.content,
+        p.category,
+        p.community_id,
+        comm.name as community_name,
+        comm.slug as community_slug,
+        p.created_at,
+        p.updated_at,
+        COALESCE(p.views_count, 0) as views_count,
+        u.id as author_id,
+        u.name as author_name,
+        u.username,
+        u.bio as author_bio,
+        (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
+        (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
+        EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+        true as has_bookmarked
+      FROM bookmarks b
+      JOIN posts p ON b.post_id = p.id
+      JOIN users u ON p.user_id = u.id
+      LEFT JOIN communities comm ON p.community_id = comm.id
+      WHERE b.user_id = $1
+      ORDER BY b.created_at DESC;
+    `;
+    const result = await pool.query(query, [userId]);
+    return res.status(200).json(
+      new ApiResponse(200, { posts: result.rows, count: result.rowCount }, "Bookmarks fetched successfully")
     );
   } catch (error) {
     next(error);

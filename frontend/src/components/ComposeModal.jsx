@@ -1,19 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { X, ImageIcon, Smile, Calendar, MapPin } from 'lucide-react';
+import { X, ImageIcon, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check } from 'lucide-react';
 import api from '../api';
 
-const ComposeModal = ({ isOpen, onClose, onPostCreated }) => {
+const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = null }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+  
+  // Community Audience selector
+  const [communities, setCommunities] = useState([]);
+  const [selectedCommunityId, setSelectedCommunityId] = useState(defaultCommunityId || '');
+  const [showAudienceMenu, setShowAudienceMenu] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
       setContent('');
       setError('');
+      setShowAudienceMenu(false);
+      setSelectedCommunityId(defaultCommunityId || '');
+    } else {
+      // Fetch available communities that user has joined or created
+      api.get('/communities')
+        .then((res) => {
+          const allComm = res.data?.data?.communities || [];
+          setCommunities(allComm.filter((c) => c.is_joined || c.is_creator));
+        })
+        .catch(() => {});
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCommunityId]);
 
   if (!isOpen) return null;
 
@@ -23,9 +38,14 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated }) => {
     try {
       setIsSubmitting(true);
       setError('');
-      const res = await api.post('/posts', { content: content.trim() });
+      const payload = { 
+        content: content.trim(),
+        community_id: selectedCommunityId || undefined
+      };
+      const res = await api.post('/posts', payload);
       if (res.data?.data?.post) {
         if (onPostCreated) onPostCreated(res.data.data.post);
+        window.dispatchEvent(new CustomEvent('post-created', { detail: res.data.data.post }));
         onClose();
       }
     } catch (err) {
@@ -36,6 +56,7 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated }) => {
   };
 
   const charLeft = 500 - content.length;
+  const activeCommunity = communities.find((c) => c.id === selectedCommunityId);
 
   return (
     <div
@@ -73,9 +94,80 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated }) => {
             />
           </div>
           <div className="flex-1 flex flex-col">
+            
+            {/* Audience Picker */}
+            <div className="relative mb-2">
+              <button
+                type="button"
+                onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[13px] font-bold border border-[#CFD9DE] hover:bg-[#EFF3F4] text-[#7C3AED] transition-colors"
+              >
+                {activeCommunity ? (
+                  <>
+                    <Users size={14} className="text-[#7C3AED]" />
+                    <span>c/{activeCommunity.slug}</span>
+                  </>
+                ) : (
+                  <>
+                    <Globe size={14} className="text-[#7C3AED]" />
+                    <span>Everyone</span>
+                  </>
+                )}
+                <ChevronDown size={14} />
+              </button>
+
+              {showAudienceMenu && (
+                <div className="absolute left-0 top-9 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-[#536471] uppercase tracking-wider">
+                    Choose Audience
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCommunityId('');
+                      setShowAudienceMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left text-[14px] font-medium flex items-center justify-between hover:bg-[#F7F9F9] transition-colors ${
+                      !selectedCommunityId ? 'text-[#7C3AED] font-bold' : 'text-[#0F1419]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe size={16} className="text-[#536471]" />
+                      <span>Everyone (Public)</span>
+                    </div>
+                    {!selectedCommunityId && <Check size={16} />}
+                  </button>
+
+                  {communities.length > 0 && (
+                    <div className="border-t border-[#EFF3F4] my-1" />
+                  )}
+
+                  {communities.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCommunityId(c.id);
+                        setShowAudienceMenu(false);
+                      }}
+                      className={`w-full px-3 py-2 text-left text-[14px] font-medium flex items-center justify-between hover:bg-[#F7F9F9] transition-colors ${
+                        selectedCommunityId === c.id ? 'text-[#7C3AED] font-bold' : 'text-[#0F1419]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <Users size={16} className="text-[#7C3AED] flex-shrink-0" />
+                        <span className="truncate">c/{c.slug}</span>
+                      </div>
+                      {selectedCommunityId === c.id && <Check size={16} className="flex-shrink-0" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <textarea
               autoFocus
-              placeholder="What is happening?!"
+              placeholder={activeCommunity ? `Post in c/${activeCommunity.slug}...` : "What is happening?!"}
               className="w-full text-[18px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-relaxed min-h-[140px]"
               value={content}
               onChange={(e) => setContent(e.target.value)}

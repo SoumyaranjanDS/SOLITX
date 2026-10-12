@@ -9,7 +9,9 @@ import {
   Edit3, 
   Link as LinkIcon, 
   Check, 
-  X 
+  X,
+  BarChart2,
+  Bookmark
 } from 'lucide-react';
 import api from '../api';
 import CommentModal from './CommentModal';
@@ -30,6 +32,18 @@ export const formatRelativeTime = (timestamp) => {
   if (diffInDays < 7) return `${diffInDays}d`;
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+// Helper to format view impressions like X / Twitter (e.g. 1.2K, 45.8K, 1.2M)
+export const formatViews = (views) => {
+  const count = Number(views) || 0;
+  if (count < 1000) return count.toLocaleString();
+  if (count < 1000000) {
+    const k = (count / 1000).toFixed(1);
+    return `${k.endsWith('.0') ? k.slice(0, -2) : k}K`;
+  }
+  const m = (count / 1000000).toFixed(1);
+  return `${m.endsWith('.0') ? m.slice(0, -2) : m}M`;
 };
 
 const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
@@ -58,11 +72,30 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
+  const [displayContent, setDisplayContent] = useState(post.content);
   const [editContent, setEditContent] = useState(post.content);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // Copy Link State
   const [copied, setCopied] = useState(false);
+
+  // Bookmark State
+  const [bookmarked, setBookmarked] = useState(Boolean(post.has_bookmarked));
+  const handleBookmarkToggle = async (e) => {
+    e.stopPropagation();
+    if (!currentUser?.username) return;
+
+    const prev = bookmarked;
+    setBookmarked(!prev);
+    try {
+      const res = await api.post(`/posts/${post.id}/bookmark`);
+      if (res.data?.data) {
+        setBookmarked(res.data.data.bookmarked);
+      }
+    } catch {
+      setBookmarked(prev);
+    }
+  };
 
   // Like Toggle
   const handleLikeToggle = async (e) => {
@@ -107,19 +140,24 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
 
   // Save Edit
   const handleSaveEdit = async () => {
-    if (!editContent.trim() || editContent.trim() === post.content) {
+    if (!editContent.trim() || editContent.trim() === displayContent) {
       setIsEditing(false);
       return;
     }
     try {
       setIsSavingEdit(true);
       const res = await api.put(`/posts/${post.id}`, { content: editContent.trim() });
+      const newText = res.data?.data?.post?.content || editContent.trim();
+      const newUpdatedAt = res.data?.data?.post?.updated_at || new Date().toISOString();
+      setDisplayContent(newText);
+      post.content = newText;
+      post.updated_at = newUpdatedAt;
       setIsEditing(false);
       if (onPostUpdated && res.data?.data?.post) {
         onPostUpdated({
           ...post,
-          content: res.data.data.post.content,
-          updated_at: res.data.data.post.updated_at,
+          content: newText,
+          updated_at: newUpdatedAt,
         });
       }
     } catch (err) {
@@ -129,13 +167,26 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
     }
   };
 
-  // Copy Link
-  const handleCopyLink = (e) => {
+  // Copy Link / Share
+  const handleCopyLink = async (e) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(`${window.location.origin}/profile/${post.username}`);
-    setCopied(true);
-    setShowMenu(false);
-    setTimeout(() => setCopied(false), 2000);
+    const postUrl = `${window.location.origin}/post/${post.id}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Post by @${post.username} on SOLITX`,
+          text: post.content.slice(0, 100),
+          url: postUrl,
+        });
+        return;
+      } catch (err) {}
+    }
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      setCopied(true);
+      setShowMenu(false);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {}
   };
 
   const isEdited = post.updated_at && post.updated_at !== post.created_at;
@@ -143,7 +194,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
   return (
     <>
       <article
-        onClick={() => onNavigate(`/profile/${post.username}`)}
+        onClick={() => onNavigate ? onNavigate(`/post/${post.id}`) : window.location.assign(`/post/${post.id}`)}
         className="flex gap-3 px-4 py-3 border-b border-[#EFF3F4] hover:bg-[#F7F9F9]/60 cursor-pointer transition-colors relative group"
       >
         {/* Author Avatar */}
@@ -178,6 +229,17 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               <span className="text-[#536471] truncate text-[14px]">
                 @{post.username} · {formatRelativeTime(post.created_at)}
               </span>
+              {post.community_slug && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNavigate(`/communities/${post.community_slug}`);
+                  }}
+                  className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-[#7C3AED]/10 text-[#7C3AED] hover:bg-[#7C3AED]/20 transition-colors"
+                >
+                  c/{post.community_slug}
+                </button>
+              )}
               {isEdited && (
                 <span className="text-[12px] text-[#536471] italic ml-0.5">(edited)</span>
               )}
@@ -254,7 +316,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                 onChange={(e) => setEditContent(e.target.value)}
                 maxLength={500}
                 rows={3}
-                className="w-full p-2.5 text-[15px] border border-[#7C3AED] rounded-xl focus:outline-none focus:ring-1 focus:ring-[#7C3AED] text-[#0F1419] resize-none leading-relaxed"
+                className="w-full p-3 text-[15px] border border-[#CFD9DE] focus:border-[#0F1419] rounded-2xl focus:outline-none text-[#0F1419] resize-none leading-relaxed bg-white shadow-sm"
               />
               <div className="flex justify-between items-center mt-1.5">
                 <span className="text-[12px] text-[#536471]">
@@ -263,31 +325,50 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      setEditContent(post.content);
+                      setEditContent(displayContent);
                       setIsEditing(false);
                     }}
-                    className="px-3 py-1 text-[13px] font-bold text-[#536471] hover:bg-[#EFF3F4] rounded-full transition-colors"
+                    className="px-4 py-1.5 text-[13px] font-bold text-[#536471] hover:bg-[#EFF3F4] rounded-full transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSaveEdit}
                     disabled={isSavingEdit || !editContent.trim()}
-                    className="px-4 py-1 text-[13px] font-bold bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-50 text-white rounded-full transition-colors"
+                    className="px-5 py-1.5 text-[13px] font-bold bg-[#0F1419] hover:bg-[#272C30] disabled:opacity-40 text-white rounded-full transition-all shadow-sm active:scale-95"
                   >
                     {isSavingEdit ? 'Saving...' : 'Save'}
                   </button>
                 </div>
               </div>
             </div>
-          ) : (
-            <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-1 leading-[1.5] whitespace-pre-wrap break-words">
-              {post.content}
-            </p>
-          )}
+          ) : (() => {
+            const mediaMatch = displayContent?.match(/(https?:\/\/[^\s]+(?:\.(?:jpg|jpeg|png|gif|webp|svg|bmp)|images\.unsplash\.com[^\s]+|imgur\.com[^\s]+))/i);
+            const mediaUrl = mediaMatch ? mediaMatch[0] : null;
+            const cleanContent = mediaUrl ? displayContent.replace(mediaUrl, '').trim() : displayContent;
+            return (
+              <>
+                {cleanContent && (
+                  <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-1 leading-[1.5] whitespace-pre-wrap break-words">
+                    {cleanContent}
+                  </p>
+                )}
+                {mediaUrl && (
+                  <div className="mt-2.5 rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[380px] bg-black/5">
+                    <img
+                      src={mediaUrl}
+                      alt="Post attachment"
+                      className="w-full h-full object-cover max-h-[380px]"
+                      onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                    />
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Interaction Bar */}
-          <div className="flex justify-between items-center mt-3 text-[#536471] max-w-[340px] sm:max-w-[420px] -ml-2">
+          <div className="flex justify-between items-center mt-3 text-[#536471] max-w-[380px] sm:max-w-[460px] -ml-2">
             {/* Replies */}
             <button
               onClick={(e) => {
@@ -310,6 +391,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               className={`flex items-center gap-1.5 p-2 rounded-full hover:bg-green-50 hover:text-green-600 active:bg-green-50 transition-colors group/rt ${
                 reposted ? 'text-green-600' : ''
               }`}
+              title="Repost"
             >
               <Repeat2 size={17} strokeWidth={1.8} />
               <span className="text-[12px] sm:text-[13px]">{reposted ? 1 : 0}</span>
@@ -321,6 +403,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               className={`flex items-center gap-1.5 p-2 rounded-full hover:bg-pink-50 hover:text-pink-600 active:bg-pink-50 transition-colors group/heart ${
                 liked ? 'text-pink-600' : ''
               }`}
+              title="Like"
             >
               <Heart
                 size={17}
@@ -333,12 +416,48 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               </span>
             </button>
 
+            {/* Views / Impressions */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onNavigate) onNavigate();
+              }}
+              className="flex items-center gap-1.5 p-2 rounded-full hover:bg-blue-50 hover:text-blue-500 active:bg-blue-50 transition-colors group/views"
+              title={`${(Number(post.views_count) || 0).toLocaleString()} Views`}
+            >
+              <BarChart2 size={17} strokeWidth={1.8} className="group-hover/views:text-blue-500" />
+              <span className="text-[12px] sm:text-[13px] group-hover/views:text-blue-500">
+                {formatViews(post.views_count || 0)}
+              </span>
+            </button>
+
+            {/* Bookmark */}
+            <button
+              onClick={handleBookmarkToggle}
+              className={`flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:bg-[#7C3AED]/10 transition-colors group/bm ${
+                bookmarked ? 'text-[#7C3AED]' : ''
+              }`}
+              title={bookmarked ? 'Remove Bookmark' : 'Bookmark'}
+            >
+              <Bookmark
+                size={17}
+                strokeWidth={1.8}
+                fill={bookmarked ? '#7C3AED' : 'none'}
+                className={bookmarked ? 'text-[#7C3AED] scale-110 transition-transform' : 'group-hover/bm:text-[#7C3AED]'}
+              />
+            </button>
+
             {/* Share */}
             <button
               onClick={handleCopyLink}
               className="flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:bg-[#7C3AED]/10 transition-colors"
+              title="Share"
             >
-              <Share size={17} strokeWidth={1.8} />
+              {copied ? (
+                <Check size={17} className="text-green-600 animate-in zoom-in-50 duration-150" />
+              ) : (
+                <Share size={17} strokeWidth={1.8} />
+              )}
             </button>
           </div>
         </div>

@@ -51,6 +51,7 @@ const SetupUsername = () => {
       const data = response.data;
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
+      localStorage.setItem('show_onboarding', 'true');
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong');
