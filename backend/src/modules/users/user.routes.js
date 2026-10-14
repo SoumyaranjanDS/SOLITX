@@ -12,7 +12,8 @@ import {
   markNotificationsRead,
   getConversations,
   getMessagesWithUser,
-  sendMessage
+  sendMessage,
+  getUsersOnlineStatus
 } from "./user.controller.js";
 import { protect, optionalProtect } from "../../middlewares/authMiddleware.js";
 
@@ -20,6 +21,7 @@ const router = express.Router();
 
 // Specific routes (MUST precede /:username)
 router.get("/suggestions", optionalProtect, getSuggestedUsers);
+router.get("/online-status", optionalProtect, getUsersOnlineStatus);
 
 // Notifications routes
 router.get("/notifications/unread-count", protect, getUnreadCounts);

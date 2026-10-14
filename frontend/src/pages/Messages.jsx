@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Mail, 
@@ -12,11 +12,12 @@ import {
   ChevronDown,
   RefreshCw,
   X,
-  Smile
+  Circle
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
+import { getSocket } from '../socket';
 
 const QUICK_GREETINGS = [
   '👋 Hey there!',
@@ -41,6 +42,15 @@ const Messages = () => {
   const [isSending, setIsSending] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
+  // Real-time Online Tracking State
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+
+  // Real-time Typing Indicator State
+  const [isPartnerTyping, setIsPartnerTyping] = useState(false);
+  const partnerTypingTimerRef = useRef(null);
+  const typingEmitTimerRef = useRef(null);
+  const hasEmittedTypingRef = useRef(false);
+
   // New Chat Modal
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [searchUserQuery, setSearchUserQuery] = useState('');
@@ -49,9 +59,11 @@ const Messages = () => {
   const messagesEndRef = useRef(null);
   const chatScrollContainerRef = useRef(null);
 
+  // ─── Initial Data & Notification Sync ─────────────────────────────────────
   useEffect(() => {
     fetchConversations();
     fetchSuggestions();
+    fetchOnlineStatus();
 
     // Mark message notifications as read
     if (currentUser?.username) {
@@ -61,7 +73,116 @@ const Messages = () => {
     }
   }, []);
 
+  // ─── Real-Time WebSocket Connection & Event Handlers ───────────────────────
   useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    // 1. Initial list of online users from server
+    const handleInitialOnline = (userList) => {
+      if (Array.isArray(userList)) {
+        setOnlineUsers(new Set(userList.map((u) => String(u).toLowerCase())));
+      }
+    };
+
+    // 2. User status change (connect / disconnect)
+    const handleUserStatus = ({ username, isOnline }) => {
+      if (!username) return;
+      const norm = String(username).toLowerCase();
+      setOnlineUsers((prev) => {
+        const next = new Set(prev);
+        if (isOnline) {
+          next.add(norm);
+        } else {
+          next.delete(norm);
+        }
+        return next;
+      });
+    };
+
+    // 3. Partner typing indicator event
+    const handleUserTyping = ({ senderUsername, isTyping }) => {
+      if (!senderUsername) return;
+      const normSender = String(senderUsername).toLowerCase();
+      const normActive = activePartner?.username?.toLowerCase() || selectedUserParam?.toLowerCase();
+
+      if (normSender === normActive) {
+        setIsPartnerTyping(Boolean(isTyping));
+
+        if (partnerTypingTimerRef.current) {
+          clearTimeout(partnerTypingTimerRef.current);
+        }
+
+        // Automatic fallback cleanup after 3.5s if stop-typing signal drops
+        if (isTyping) {
+          partnerTypingTimerRef.current = setTimeout(() => {
+            setIsPartnerTyping(false);
+          }, 3500);
+        }
+      }
+    };
+
+    // 4. Live incoming message received
+    const handleReceiveMessage = (msg) => {
+      if (!msg) return;
+      const senderU = String(msg.sender_username || '').toLowerCase();
+      const normActive = activePartner?.username?.toLowerCase() || selectedUserParam?.toLowerCase();
+
+      // If active conversation matches, append live
+      if (senderU && senderU === normActive) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, { ...msg, is_mine: false }];
+        });
+        setIsPartnerTyping(false);
+        if (partnerTypingTimerRef.current) clearTimeout(partnerTypingTimerRef.current);
+
+        // Mark read
+        api.put('/users/notifications/read', { type: 'message' }).catch(() => {});
+      }
+
+      // Update sidebar conversations list
+      setConversations((prev) => {
+        const existingIdx = prev.findIndex(
+          (c) => c.partner_username?.toLowerCase() === senderU
+        );
+        if (existingIdx !== -1) {
+          const updated = [...prev];
+          const conv = {
+            ...updated[existingIdx],
+            last_message: msg.content,
+            last_message_at: msg.created_at || new Date().toISOString()
+          };
+          updated.splice(existingIdx, 1);
+          return [conv, ...updated];
+        } else {
+          fetchConversations();
+          return prev;
+        }
+      });
+    };
+
+    socket.on('initial_online_users', handleInitialOnline);
+    socket.on('user_status', handleUserStatus);
+    socket.on('user_typing', handleUserTyping);
+    socket.on('receive_message', handleReceiveMessage);
+
+    return () => {
+      socket.off('initial_online_users', handleInitialOnline);
+      socket.off('user_status', handleUserStatus);
+      socket.off('user_typing', handleUserTyping);
+      socket.off('receive_message', handleReceiveMessage);
+    };
+  }, [activePartner, selectedUserParam]);
+
+  // ─── Selected Partner Route Change ────────────────────────────────────────
+  useEffect(() => {
+    // Reset typing state on partner switch
+    setIsPartnerTyping(false);
+    if (partnerTypingTimerRef.current) clearTimeout(partnerTypingTimerRef.current);
+    if (typingEmitTimerRef.current) clearTimeout(typingEmitTimerRef.current);
+    hasEmittedTypingRef.current = false;
+
     if (selectedUserParam) {
       loadMessagesForUser(selectedUserParam);
     } else {
@@ -70,9 +191,10 @@ const Messages = () => {
     }
   }, [selectedUserParam]);
 
+  // Scroll to bottom on new messages or partner typing
   useEffect(() => {
     scrollToBottom('smooth');
-  }, [messages]);
+  }, [messages, isPartnerTyping]);
 
   const scrollToBottom = (behavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -82,6 +204,16 @@ const Messages = () => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 120;
     setShowScrollBottom(!isNearBottom);
+  };
+
+  const fetchOnlineStatus = async () => {
+    try {
+      const res = await api.get('/users/online-status');
+      const onlineList = res.data?.data?.onlineUsers || [];
+      if (Array.isArray(onlineList)) {
+        setOnlineUsers(new Set(onlineList.map((u) => String(u).toLowerCase())));
+      }
+    } catch (_) {}
   };
 
   const fetchConversations = async () => {
@@ -127,14 +259,76 @@ const Messages = () => {
     setSearchParams({ u: username });
   };
 
+  // ─── Typing Emission Logic ────────────────────────────────────────────────
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setMessageText(val);
+
+    const socket = getSocket();
+    if (!socket || !activePartner?.username) return;
+
+    if (val.trim()) {
+      if (!hasEmittedTypingRef.current) {
+        socket.emit('typing', {
+          recipientUsername: activePartner.username,
+          isTyping: true
+        });
+        hasEmittedTypingRef.current = true;
+      }
+
+      // Reset auto-stop typing timer (2.5 seconds)
+      if (typingEmitTimerRef.current) clearTimeout(typingEmitTimerRef.current);
+      typingEmitTimerRef.current = setTimeout(() => {
+        socket.emit('typing', {
+          recipientUsername: activePartner.username,
+          isTyping: false
+        });
+        hasEmittedTypingRef.current = false;
+      }, 2500);
+    } else {
+      // Empty input
+      if (hasEmittedTypingRef.current) {
+        if (typingEmitTimerRef.current) clearTimeout(typingEmitTimerRef.current);
+        socket.emit('typing', {
+          recipientUsername: activePartner.username,
+          isTyping: false
+        });
+        hasEmittedTypingRef.current = false;
+      }
+    }
+  };
+
+  const handleInputBlur = () => {
+    const socket = getSocket();
+    if (socket && activePartner?.username && hasEmittedTypingRef.current) {
+      if (typingEmitTimerRef.current) clearTimeout(typingEmitTimerRef.current);
+      socket.emit('typing', {
+        recipientUsername: activePartner.username,
+        isTyping: false
+      });
+      hasEmittedTypingRef.current = false;
+    }
+  };
+
   const handleSendMessage = async (e, customText = null) => {
     e?.preventDefault();
     const textToSend = (customText !== null ? customText : messageText).trim();
     if (!textToSend || !activePartner?.username || isSending) return;
 
+    // Immediately stop typing indicator
+    const socket = getSocket();
+    if (socket && hasEmittedTypingRef.current) {
+      if (typingEmitTimerRef.current) clearTimeout(typingEmitTimerRef.current);
+      socket.emit('typing', {
+        recipientUsername: activePartner.username,
+        isTyping: false
+      });
+      hasEmittedTypingRef.current = false;
+    }
+
     setMessageText('');
 
-    // Optimistic message
+    // Optimistic message UI update
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg = {
       id: tempId,
@@ -171,6 +365,10 @@ const Messages = () => {
       c.last_message?.toLowerCase().includes(q)
     );
   });
+
+  const isPartnerOnline = activePartner?.username
+    ? onlineUsers.has(activePartner.username.toLowerCase())
+    : false;
 
   return (
     <AppShell 
@@ -272,6 +470,8 @@ const Messages = () => {
             ) : (
               filteredConversations.map((c) => {
                 const isSelected = selectedUserParam === c.partner_username;
+                const isUserActive = onlineUsers.has(c.partner_username?.toLowerCase());
+
                 return (
                   <div
                     key={c.partner_id || c.partner_username}
@@ -280,18 +480,30 @@ const Messages = () => {
                       isSelected ? 'bg-[#7C3AED]/10 border-l-4 border-[#7C3AED]' : ''
                     }`}
                   >
-                    <div className="relative w-11 h-11 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                      <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${c.partner_username}`}
-                        alt={c.partner_username}
-                        className="w-full h-full object-cover"
-                      />
+                    {/* Avatar with Online Status Indicator */}
+                    <div className="relative w-11 h-11 rounded-full bg-gray-200 flex-shrink-0">
+                      <div className="w-full h-full rounded-full overflow-hidden">
+                        <img
+                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${c.partner_username}`}
+                          alt={c.partner_username}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      {isUserActive && (
+                        <span
+                          className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-500/20"
+                          title="Online now"
+                        />
+                      )}
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="font-bold text-[15px] text-[#0F1419] truncate">
-                          {c.partner_name || c.partner_username}
-                        </span>
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="font-bold text-[15px] text-[#0F1419] truncate">
+                            {c.partner_name || c.partner_username}
+                          </span>
+                        </div>
                         <span className="text-[12px] text-[#536471] flex-shrink-0">
                           {formatRelativeTime(c.last_message_at)}
                         </span>
@@ -313,7 +525,7 @@ const Messages = () => {
         }`}>
           {selectedUserParam && activePartner ? (
             <>
-              {/* Chat Header with Navigation Buttons */}
+              {/* Chat Header with Status and Navigation */}
               <div className="px-3.5 py-2.5 sm:py-3 border-b border-[#EFF3F4] flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-30 shadow-xs">
                 <div className="flex items-center gap-2.5 min-w-0">
                   {/* Back to Conversations Button (prominent on mobile) */}
@@ -325,20 +537,27 @@ const Messages = () => {
                     <ArrowLeft size={20} />
                   </button>
 
-                  {/* Partner Avatar + Status */}
+                  {/* Partner Avatar + Real-Time Online Badge */}
                   <div 
                     onClick={() => navigate(`/profile/${activePartner.username}`)}
-                    className="relative w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-pointer flex-shrink-0 ring-2 ring-transparent hover:ring-[#7C3AED]/30 transition-all"
+                    className="relative w-10 h-10 rounded-full bg-gray-200 cursor-pointer flex-shrink-0 ring-2 ring-transparent hover:ring-[#7C3AED]/30 transition-all"
                   >
-                    <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.username}`}
-                      alt={activePartner.username}
-                      className="w-full h-full object-cover"
+                    <div className="w-full h-full rounded-full overflow-hidden">
+                      <img
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.username}`}
+                        alt={activePartner.username}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <span 
+                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white transition-colors duration-200 ${
+                        isPartnerOnline ? 'bg-emerald-500 ring-1 ring-emerald-500/20' : 'bg-gray-300'
+                      }`}
+                      title={isPartnerOnline ? 'Online' : 'Offline'}
                     />
-                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white" />
                   </div>
 
-                  {/* Partner Name & Handle */}
+                  {/* Partner Name, Handle & Typing/Online Status */}
                   <div 
                     onClick={() => navigate(`/profile/${activePartner.username}`)}
                     className="cursor-pointer min-w-0"
@@ -346,7 +565,26 @@ const Messages = () => {
                     <h3 className="font-bold text-[15px] sm:text-[16px] text-[#0F1419] leading-tight hover:underline truncate">
                       {activePartner.name || activePartner.username}
                     </h3>
-                    <p className="text-[12px] text-[#536471] truncate">@{activePartner.username}</p>
+                    
+                    <div className="flex items-center gap-1.5 mt-0.5 leading-none">
+                      <span className="text-[12px] text-[#536471] truncate">@{activePartner.username}</span>
+                      <span className="text-[#CFD9DE] text-[11px]">•</span>
+
+                      {/* Dynamic Online & Typing Indicator in Header */}
+                      {isPartnerTyping ? (
+                        <span className="text-[#7C3AED] font-semibold text-[12px] flex items-center gap-1.5 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#7C3AED]" />
+                          typing...
+                        </span>
+                      ) : isPartnerOnline ? (
+                        <span className="text-emerald-600 font-medium text-[12px] flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Online
+                        </span>
+                      ) : (
+                        <span className="text-[#536471] text-[12px]">Offline</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -424,6 +662,28 @@ const Messages = () => {
                     </div>
                   ))
                 )}
+
+                {/* ── Real-Time Typing Indicator Bubble in Stream ── */}
+                {isPartnerTyping && (
+                  <div className="flex items-end gap-2 my-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                    <div className="w-7 h-7 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 shadow-2xs">
+                      <img
+                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.username}`}
+                        alt={activePartner.username}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="bg-white border border-[#E2E8F0] px-3.5 py-2.5 rounded-2xl rounded-bl-xs flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-[#7C3AED] animate-bounce [animation-delay:-0.3s]" />
+                      <span className="w-2 h-2 rounded-full bg-[#7C3AED] animate-bounce [animation-delay:-0.15s]" />
+                      <span className="w-2 h-2 rounded-full bg-[#7C3AED] animate-bounce" />
+                    </div>
+                    <span className="text-[11px] text-[#536471] italic pb-1">
+                      typing...
+                    </span>
+                  </div>
+                )}
+
                 <div ref={messagesEndRef} />
               </div>
 
@@ -438,7 +698,7 @@ const Messages = () => {
                 </button>
               )}
 
-              {/* Message Composer Input (Optimized from Bottom for Mobile) */}
+              {/* Message Composer Input */}
               <div className="border-t border-[#EFF3F4] bg-white p-2.5 sm:p-3 sticky bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
                 <form
                   onSubmit={handleSendMessage}
@@ -448,7 +708,8 @@ const Messages = () => {
                     type="text"
                     placeholder={`Message @${activePartner.username}...`}
                     value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
+                    onChange={handleInputChange}
+                    onBlur={handleInputBlur}
                     className="flex-1 py-2.5 px-4 bg-[#F0F3F4] text-[#0F1419] placeholder:text-[#536471] rounded-full text-[14.5px] sm:text-[15px] focus:bg-white border border-transparent focus:border-[#7C3AED] outline-none transition-all shadow-inner"
                   />
                   <button
@@ -482,7 +743,7 @@ const Messages = () => {
         </div>
       </div>
 
-      {/* ── New Chat Modal ── */}
+      {/* ── New Chat Modal with Live Online Status ── */}
       {showNewChatModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl w-full max-w-[420px] p-5 shadow-2xl flex flex-col max-h-[80vh]">
@@ -510,28 +771,49 @@ const Messages = () => {
             <div className="flex-1 overflow-y-auto mt-3 divide-y divide-[#EFF3F4]">
               {suggestedUsers
                 .filter((u) => u.username.toLowerCase().includes(searchUserQuery.toLowerCase()))
-                .map((u) => (
-                  <div
-                    key={u.id || u.username}
-                    onClick={() => {
-                      selectConversation(u.username);
-                      setShowNewChatModal(false);
-                    }}
-                    className="flex items-center gap-3 p-3 hover:bg-[#F7F9F9] cursor-pointer rounded-xl transition-colors"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
-                      <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
-                        alt={u.username}
-                        className="w-full h-full object-cover"
-                      />
+                .map((u) => {
+                  const isUserActive = onlineUsers.has(u.username?.toLowerCase());
+                  return (
+                    <div
+                      key={u.id || u.username}
+                      onClick={() => {
+                        selectConversation(u.username);
+                        setShowNewChatModal(false);
+                      }}
+                      className="flex items-center justify-between p-3 hover:bg-[#F7F9F9] cursor-pointer rounded-xl transition-colors group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="relative w-10 h-10 rounded-full bg-gray-200 flex-shrink-0">
+                          <div className="w-full h-full rounded-full overflow-hidden">
+                            <img
+                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                              alt={u.username}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          {isUserActive && (
+                            <span 
+                              className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-500/20"
+                              title="Online now"
+                            />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold text-[15px] text-[#0F1419] group-hover:text-[#7C3AED] transition-colors truncate">
+                            {u.name || u.username}
+                          </p>
+                          <p className="text-[12px] text-[#536471] truncate max-w-[200px]">@{u.username}</p>
+                        </div>
+                      </div>
+
+                      {isUserActive && (
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[11px] font-semibold rounded-full border border-emerald-200 flex-shrink-0">
+                          Online
+                        </span>
+                      )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-[15px] text-[#0F1419]">{u.username}</p>
-                      <p className="text-[13px] text-[#536471] truncate max-w-[200px]">{u.bio || `@${u.username}`}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         </div>

@@ -1,18 +1,25 @@
 import express from "express";
+import http from "http";
 import dotenv from "dotenv";
 import cors from "cors";
 import { connectDB } from "./config/db.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { ApiResponse } from "./utils/ApiResponse.js";
 import { AppError } from "./utils/AppError.js";
+import { initSocket } from "./services/socketService.js";
 
 dotenv.config();
 
 const app = express();
-app.use(cors({
-  origin: ["http://localhost:5173", "https://solitx.soumya.site"],
-  credentials: true
-}));
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://solitx.soumya.site"],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 const port = process.env.PORT || 5005;
@@ -181,5 +188,5 @@ app.get("/error-test", async (req, res, next) => {
 app.use(errorHandler);
 
 connectDB().then(() => {
-  app.listen(port, () => console.log(`Server running on port ${port}`));
+  httpServer.listen(port, () => console.log(`Server running on port ${port}`));
 });

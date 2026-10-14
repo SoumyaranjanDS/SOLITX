@@ -3,6 +3,7 @@ import redis from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { createNotification } from "../../services/notificationService.js";
+import { emitNewMessage, isUserOnline, getOnlineUsernames } from "../../services/socketService.js";
 
 // GET Profile (Uses Redis Cache from Day 13)
 export const getUserProfile = async (req, res, next) => {
@@ -482,6 +483,10 @@ export const sendMessage = async (req, res, next) => {
       RETURNING id, sender_id, recipient_id, content, created_at;
     `, [userId, recipientId, content.trim()]);
 
+    // Fetch sender info for real-time socket payload
+    const senderRes = await pool.query("SELECT id, username, name FROM users WHERE id = $1", [userId]);
+    const sender = senderRes.rows[0];
+
     // In-app Notification for direct message
     await createNotification({
       recipientId,
@@ -489,6 +494,16 @@ export const sendMessage = async (req, res, next) => {
       type: 'message',
       messageContent: content.trim(),
     });
+
+    const fullMessage = {
+      ...insertRes.rows[0],
+      sender_username: sender?.username,
+      sender_name: sender?.name,
+      is_mine: false
+    };
+
+    // Real-time live delivery via Socket.IO
+    emitNewMessage(username, fullMessage);
 
     return res.status(201).json(new ApiResponse(201, { message: { ...insertRes.rows[0], is_mine: true } }, "Message sent"));
   } catch (error) {
@@ -523,6 +538,30 @@ export const deleteNotification = async (req, res, next) => {
     const { id } = req.params;
     await pool.query("DELETE FROM notifications WHERE id = $1 AND recipient_id = $2", [id, userId]);
     return res.status(200).json(new ApiResponse(200, null, "Notification deleted successfully"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── GET Online Status for Users ────────────────────────────────────────────
+export const getUsersOnlineStatus = async (req, res, next) => {
+  try {
+    const { usernames } = req.query;
+    if (!usernames) {
+      return res.status(200).json(
+        new ApiResponse(200, { onlineUsers: getOnlineUsernames() }, "Online users fetched successfully")
+      );
+    }
+
+    const list = String(usernames).split(",").map(u => u.trim().toLowerCase()).filter(Boolean);
+    const statuses = {};
+    list.forEach(u => {
+      statuses[u] = isUserOnline(u);
+    });
+
+    return res.status(200).json(
+      new ApiResponse(200, { statuses }, "Online statuses fetched successfully")
+    );
   } catch (error) {
     next(error);
   }

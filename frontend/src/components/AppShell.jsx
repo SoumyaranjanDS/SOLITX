@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import ComposeModal from './ComposeModal';
 import api from '../api';
+import { getSocket, disconnectSocket } from '../socket';
 
 // ─── SOLITX Logo ──────────────────────────────────────────────────────────────
 export const SolitxLogo = ({ size = 30 }) => (
@@ -240,6 +241,29 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
       fetchUnreadCounts();
     }, 10000);
 
+    // Connect to WebSocket and listen for real-time messages & notification events
+    const socket = getSocket();
+    const handleLiveMsg = (msg) => {
+      if (!msg) return;
+      const params = new URLSearchParams(window.location.search);
+      const activeChatUser = params.get('u');
+      const isCurrentChat = window.location.pathname.startsWith('/messages') && 
+        activeChatUser?.toLowerCase() === msg.sender_username?.toLowerCase();
+
+      if (!isCurrentChat) {
+        showToast({
+          type: 'message',
+          actor_username: msg.sender_username,
+          message_content: msg.content
+        });
+        fetchUnreadCounts();
+      }
+    };
+
+    if (socket) {
+      socket.on('receive_message', handleLiveMsg);
+    }
+
     // Fetch Who to follow suggestions
     api.get('/users/suggestions')
       .then(res => setSuggestedUsers(res.data?.data?.users || []))
@@ -253,6 +277,9 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
       window.removeEventListener('post-created', handlePostCreated);
       clearInterval(pollInterval);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (socket) {
+        socket.off('receive_message', handleLiveMsg);
+      }
     };
   }, []);
 
@@ -305,6 +332,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
   };
 
   const handleLogout = () => {
+    disconnectSocket();
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/auth');
