@@ -15,8 +15,10 @@ export const initSocket = (httpServer) => {
     cors: {
       origin: [
         "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
         "https://solitx.soumya.site",
-        "http://localhost:5015",
+        "https://study.soumya.site",
       ],
       credentials: true,
     },

@@ -14,9 +14,27 @@ const app = express();
 const httpServer = http.createServer(app);
 initSocket(httpServer);
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "https://solitx.soumya.site",
+  "https://study.soumya.site",
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "https://solitx.soumya.site"],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".soumya.site") ||
+        /^http:\/\/localhost:\d+$/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
     credentials: true,
   }),
 );
@@ -168,6 +186,8 @@ app.put("/api/v1/test/user/:username", async (req, res, next) => {
 });
 
 app.get("/api/v1/health", (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -178,8 +198,8 @@ app.get("/api/v1/health", (req, res) => {
         port,
         pid: process.pid,
       },
-      "Instance health check OK"
-    )
+      "Instance health check OK",
+    ),
   );
 });
 
