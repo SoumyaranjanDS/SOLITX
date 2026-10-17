@@ -1,4 +1,4 @@
-import bcrypt from "bcryptjs";
+import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import pool from "../../config/db.js";
 import { AppError } from "../../utils/AppError.js";
@@ -22,11 +22,19 @@ export const registerUser = async (req, res, next) => {
 
     // Auto-generate provisional username if not supplied
     if (!username || !username.trim()) {
-      const emailPrefix = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '').slice(0, 12).toLowerCase() || 'user';
+      const emailPrefix =
+        email
+          .split("@")[0]
+          .replace(/[^a-zA-Z0-9_]/g, "")
+          .slice(0, 12)
+          .toLowerCase() || "user";
       let candidate = `${emailPrefix}_${Math.floor(1000 + Math.random() * 9000)}`;
       let isUnique = false;
       while (!isUnique) {
-        const check = await pool.query("SELECT 1 FROM users WHERE username = $1", [candidate]);
+        const check = await pool.query(
+          "SELECT 1 FROM users WHERE username = $1",
+          [candidate],
+        );
         if (check.rowCount === 0) {
           isUnique = true;
           username = candidate;
@@ -155,20 +163,30 @@ export const googleAuthCallback = async (req, res, next) => {
     const profile = req.user;
     const email = profile.emails[0].value;
 
-    const findUserQuery = "SELECT id, username, email FROM users WHERE email = $1";
+    const findUserQuery =
+      "SELECT id, username, email FROM users WHERE email = $1";
     let result = await pool.query(findUserQuery, [email]);
 
-    const frontendUrl = process.env.NODE_ENV === "production" ? "https://solitx.soumya.site" : "http://localhost:5173";
+    const frontendUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://solitx.soumya.site"
+        : "http://localhost:5173";
 
     if (result.rows.length === 0) {
       // New user! Send them to a username selection page with a temporary setup token.
-      const tempToken = jwt.sign({ email, name: profile.displayName }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      const tempToken = jwt.sign(
+        { email, name: profile.displayName },
+        process.env.JWT_SECRET,
+        { expiresIn: "1h" },
+      );
       return res.redirect(`${frontendUrl}/setup-username?token=${tempToken}`);
     } else {
       // Existing user, log them in normally
       const user = result.rows[0];
       const token = generateToken(user.id);
-      return res.redirect(`${frontendUrl}?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`);
+      return res.redirect(
+        `${frontendUrl}?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`,
+      );
     }
   } catch (error) {
     next(error);
@@ -178,10 +196,24 @@ export const googleAuthCallback = async (req, res, next) => {
 export const checkUsername = async (req, res, next) => {
   try {
     const { username } = req.query;
-    if (!username) return res.status(400).json(new ApiResponse(400, null, "Username required"));
-    
-    const result = await pool.query('SELECT 1 FROM users WHERE username = $1 LIMIT 1', [username.toLowerCase()]);
-    return res.status(200).json(new ApiResponse(200, { available: result.rowCount === 0 }, "Checked username"));
+    if (!username)
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "Username required"));
+
+    const result = await pool.query(
+      "SELECT 1 FROM users WHERE username = $1 LIMIT 1",
+      [username.toLowerCase()],
+    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { available: result.rowCount === 0 },
+          "Checked username",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -197,11 +229,19 @@ export const completeGoogleRegistration = async (req, res, next) => {
     const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
     const { email } = decoded;
 
-    const checkUser = await pool.query("SELECT 1 FROM users WHERE username = $1", [username.toLowerCase()]);
-    if (checkUser.rowCount > 0) throw new AppError(400, "Username already taken");
+    const checkUser = await pool.query(
+      "SELECT 1 FROM users WHERE username = $1",
+      [username.toLowerCase()],
+    );
+    if (checkUser.rowCount > 0)
+      throw new AppError(400, "Username already taken");
 
-    const checkEmail = await pool.query("SELECT 1 FROM users WHERE email = $1", [email]);
-    if (checkEmail.rowCount > 0) throw new AppError(400, "Email already registered");
+    const checkEmail = await pool.query(
+      "SELECT 1 FROM users WHERE email = $1",
+      [email],
+    );
+    if (checkEmail.rowCount > 0)
+      throw new AppError(400, "Email already registered");
 
     const randomPassword = Math.random().toString(36).slice(-8);
     const salt = await bcrypt.genSalt(10);
@@ -212,11 +252,17 @@ export const completeGoogleRegistration = async (req, res, next) => {
       VALUES ($1, $2, $3)
       RETURNING id, username, email, bio, created_at
     `;
-    const newUser = await pool.query(insertUserQuery, [username.toLowerCase(), email, passwordHash]);
+    const newUser = await pool.query(insertUserQuery, [
+      username.toLowerCase(),
+      email,
+      passwordHash,
+    ]);
     const user = newUser.rows[0];
 
     const token = generateToken(user.id);
-    return res.status(201).json(new ApiResponse(201, { user, token }, "Registered successfully"));
+    return res
+      .status(201)
+      .json(new ApiResponse(201, { user, token }, "Registered successfully"));
   } catch (error) {
     next(error);
   }

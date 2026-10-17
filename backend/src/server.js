@@ -167,6 +167,22 @@ app.put("/api/v1/test/user/:username", async (req, res, next) => {
   }
 });
 
+app.get("/api/v1/health", (req, res) => {
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        status: "healthy",
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+        port,
+        pid: process.pid,
+      },
+      "Instance health check OK"
+    )
+  );
+});
+
 app.get("/api/v1", async (req, res, next) => {
   try {
     return res

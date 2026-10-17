@@ -263,6 +263,7 @@ export const getCommunityFeed = async (req, res, next) => {
     const selectBookmarked = currentUserId
       ? `EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $2) as has_bookmarked`
       : 'false as has_bookmarked';
+    const limitPlaceholder = currentUserId ? '$3' : '$2';
 
     const feedQuery = `
       SELECT 
@@ -288,10 +289,10 @@ export const getCommunityFeed = async (req, res, next) => {
       JOIN communities c ON p.community_id = c.id
       WHERE p.community_id = $1
       ORDER BY p.created_at DESC
-      LIMIT $3;
+      LIMIT ${limitPlaceholder};
     `;
 
-    const params = currentUserId ? [communityId, currentUserId, limit] : [communityId, null, limit];
+    const params = currentUserId ? [communityId, currentUserId, limit] : [communityId, limit];
     const result = await pool.query(feedQuery, params);
 
     return res.status(200).json(

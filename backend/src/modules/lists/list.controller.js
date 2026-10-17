@@ -246,6 +246,7 @@ export const getListFeed = async (req, res, next) => {
     const selectBookmarked = currentUserId
       ? `EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $2) as has_bookmarked`
       : 'false as has_bookmarked';
+    const limitPlaceholder = currentUserId ? '$3' : '$2';
 
     const feedQuery = `
       SELECT 
@@ -275,10 +276,10 @@ export const getListFeed = async (req, res, next) => {
         SELECT creator_id FROM lists WHERE id = $1
       )
       ORDER BY p.created_at DESC
-      LIMIT $3;
+      LIMIT ${limitPlaceholder};
     `;
 
-    const params = currentUserId ? [id, currentUserId, limit] : [id, null, limit];
+    const params = currentUserId ? [id, currentUserId, limit] : [id, limit];
     const result = await pool.query(feedQuery, params);
 
     return res.status(200).json(
