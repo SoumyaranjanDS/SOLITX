@@ -50,11 +50,6 @@ jobs:
             cd /var/www/solitx/backend
             npm install --omit=dev
             
-            # Restart if exists, otherwise start fresh
-            pm2 describe solitx-api > /dev/null
-            if [ $? -eq 0 ]; then
-              pm2 restart solitx-api
-            else
-              pm2 start src/server.js --name solitx-api
-            fi
+            # Zero-downtime rolling reload of both instances
+            pm2 reload solitx-api-1 solitx-api-2 --update-env
             pm2 save
