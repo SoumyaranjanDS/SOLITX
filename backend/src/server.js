@@ -197,6 +197,12 @@ app.get("/api/v1/health", (req, res) => {
         timestamp: new Date().toISOString(),
         port,
         pid: process.pid,
+        dbPool: {
+          total: pool.totalCount,
+          idle: pool.idleCount,
+          waiting: pool.waitingCount,
+          max: pool.options?.max || 25,
+        },
       },
       "Instance health check OK",
     ),

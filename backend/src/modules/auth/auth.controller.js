@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import pool from "../../config/db.js";
+import redis from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 
@@ -143,11 +144,26 @@ export const deleteUser = async (req, res, next) => {
   try {
     const userId = req.user.id; // Comes from the protect middleware
 
+    // Retrieve username before deleting so we can purge Redis cache
+    const userRes = await pool.query(
+      "SELECT username FROM users WHERE id = $1",
+      [userId],
+    );
+    const username = userRes.rows[0]?.username;
+
     const deleteQuery = "DELETE FROM users WHERE id = $1 RETURNING id";
     const result = await pool.query(deleteQuery, [userId]);
 
     if (result.rows.length === 0) {
       throw new AppError(404, "User not found");
+    }
+
+    if (username) {
+      try {
+        await redis.del(`user:${username}`);
+      } catch (e) {
+        // Continue even if Redis fails
+      }
     }
 
     return res
@@ -164,22 +180,61 @@ export const googleAuthCallback = async (req, res, next) => {
     const email = profile.emails[0].value;
 
     const findUserQuery =
-      "SELECT id, username, email FROM users WHERE email = $1";
+      "SELECT id, username, email, bio FROM users WHERE email = $1";
     let result = await pool.query(findUserQuery, [email]);
 
     const frontendUrl =
-      process.env.NODE_ENV === "production"
+      process.env.FRONTEND_URL ||
+      (process.env.NODE_ENV === "production"
         ? "https://solitx.soumya.site"
-        : "http://localhost:5173";
+        : "http://localhost:5173");
 
     if (result.rows.length === 0) {
-      // New user! Send them to a username selection page with a temporary setup token.
-      const tempToken = jwt.sign(
-        { email, name: profile.displayName },
-        process.env.JWT_SECRET,
-        { expiresIn: "1h" },
+      // New user registering via Google!
+      // Generate a provisional unique username
+      const rawBase =
+        (profile.displayName || email.split("@")[0] || "user")
+          .replace(/[^a-zA-Z0-9_]/g, "")
+          .slice(0, 12)
+          .toLowerCase() || "user";
+
+      let candidate = `${rawBase}_${Math.floor(1000 + Math.random() * 9000)}`;
+      let isUnique = false;
+      while (!isUnique) {
+        const check = await pool.query(
+          "SELECT 1 FROM users WHERE username = $1",
+          [candidate],
+        );
+        if (check.rowCount === 0) {
+          isUnique = true;
+        } else {
+          candidate = `${rawBase}_${Math.floor(1000 + Math.random() * 9000)}`;
+        }
+      }
+
+      // Generate random secure password hash for OAuth account
+      const randomPassword =
+        Math.random().toString(36).slice(-8) +
+        Math.random().toString(36).slice(-8);
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(randomPassword, salt);
+
+      const insertUserQuery = `
+        INSERT INTO users (username, email, password_hash)
+        VALUES ($1, $2, $3)
+        RETURNING id, username, email, bio, created_at
+      `;
+      const newUser = await pool.query(insertUserQuery, [
+        candidate,
+        email,
+        passwordHash,
+      ]);
+      const user = newUser.rows[0];
+      const token = generateToken(user.id);
+
+      return res.redirect(
+        `${frontendUrl}?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}&isNewUser=true`,
       );
-      return res.redirect(`${frontendUrl}/setup-username?token=${tempToken}`);
     } else {
       // Existing user, log them in normally
       const user = result.rows[0];

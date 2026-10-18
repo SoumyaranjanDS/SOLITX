@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  Link as LinkIcon, 
-  Calendar, 
-  Edit3, 
+import {
+  ArrowLeft,
+  Link as LinkIcon,
+  Calendar,
+  Edit3,
   X,
   Check,
   Globe,
@@ -14,7 +14,8 @@ import {
   MessageCircle,
   Heart,
   Image as ImageIcon,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard, { formatRelativeTime } from '../components/PostCard';
@@ -112,9 +113,8 @@ const ProfileReplyCard = ({ reply, onNavigate }) => {
           <div className="flex items-center gap-6 mt-3 text-[#536471] -ml-2">
             <button
               onClick={handleLike}
-              className={`flex items-center gap-1.5 p-1.5 rounded-full transition-colors group/like ${
-                hasLiked ? 'text-[#F91880]' : 'hover:bg-[#F91880]/10 hover:text-[#F91880]'
-              }`}
+              className={`flex items-center gap-1.5 p-1.5 rounded-full transition-colors group/like ${hasLiked ? 'text-[#F91880]' : 'hover:bg-[#F91880]/10 hover:text-[#F91880]'
+                }`}
             >
               <Heart
                 size={16}
@@ -160,6 +160,12 @@ const Profile = () => {
   const [editError, setEditError] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Delete Profile Modal State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
 
   // Followers / Following Modal State
   const [followModalType, setFollowModalType] = useState(null); // 'followers' | 'following' | null
@@ -390,6 +396,30 @@ const Profile = () => {
     }
   };
 
+  // Delete User Account & Profile
+  const handleDeleteProfile = async () => {
+    try {
+      setIsDeletingProfile(true);
+      setDeleteError('');
+      await api.delete('/auth/delete');
+
+      // Purge all user tokens and cached profile
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.removeItem('show_onboarding');
+      localStorage.removeItem('onboarding_completed');
+
+      // Broadcast storage event to sync all UI components
+      window.dispatchEvent(new Event('storage'));
+
+      // Redirect immediately to Auth page
+      navigate('/auth', { replace: true });
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || 'Failed to delete account. Please try again.');
+      setIsDeletingProfile(false);
+    }
+  };
+
   const handlePostDeleted = (id) => {
     setTabData(prev => ({
       ...prev,
@@ -462,29 +492,42 @@ const Profile = () => {
             </div>
 
             {/* Profile Action Button */}
-            <div className="mt-3">
+            <div className="mt-3 flex items-center gap-2">
               {isOwnProfile ? (
-                <button 
-                  onClick={() => {
-                    setEditName(user?.name || user?.username || '');
-                    setEditUsername(user?.username || '');
-                    setEditBio(user?.bio || '');
-                    setEditBioLink(user?.bio_link || '');
-                    setEditError('');
-                    setShowEditModal(true);
-                  }}
-                  className="px-5 py-1.5 border border-[#CFD9DE] hover:bg-[#F7F9F9] text-[#0F1419] font-bold text-[14px] rounded-full transition-colors whitespace-nowrap active:scale-95 shadow-sm"
-                >
-                  Edit profile
-                </button>
+                <>
+                  <button
+                    onClick={() => {
+                      setEditName(user?.name || user?.username || '');
+                      setEditUsername(user?.username || '');
+                      setEditBio(user?.bio || '');
+                      setEditBioLink(user?.bio_link || '');
+                      setEditError('');
+                      setShowEditModal(true);
+                    }}
+                    className="p-1.5 border border-[#CFD9DE] hover:bg-[#F7F9F9] hover:border-[#0F1419] text-[#0F1419] rounded-full transition-all active:scale-95 shadow-sm flex items-center justify-center"
+                    title="Edit profile"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeleteConfirmationText('');
+                      setDeleteError('');
+                      setShowDeleteModal(true);
+                    }}
+                    className="p-1.5 border border-red-200 hover:border-red-300 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-full transition-all active:scale-95 shadow-sm"
+                    title="Delete Account"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={handleToggleFollow}
-                  className={`px-6 py-1.5 font-bold text-[14px] rounded-full transition-colors whitespace-nowrap active:scale-95 shadow-sm ${
-                    isFollowing
+                  className={`px-6 py-1.5 font-bold text-[14px] rounded-full transition-colors whitespace-nowrap active:scale-95 shadow-sm ${isFollowing
                       ? 'border border-[#CFD9DE] hover:border-red-300 hover:text-red-600 hover:bg-red-50 text-[#0F1419]'
                       : 'bg-[#0F1419] hover:bg-[#272C30] text-white'
-                  }`}
+                    }`}
                 >
                   {isFollowing ? 'Following' : 'Follow'}
                 </button>
@@ -509,7 +552,7 @@ const Profile = () => {
             </p>
           ) : (
             isOwnProfile && (
-              <p 
+              <p
                 onClick={() => setShowEditModal(true)}
                 className="mt-2 text-[14px] text-[#536471] italic cursor-pointer hover:underline"
               >
@@ -800,6 +843,94 @@ const Profile = () => {
                   Add your portfolio, GitHub, blog, or project link.
                 </p>
               </div>
+
+              {/* Danger Zone: Delete Account */}
+              <div className="pt-5 border-t border-red-100 mt-6">
+                <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-[14px] font-bold text-red-600 flex items-center gap-1.5">
+                      <Trash2 size={16} /> Delete Account
+                    </h4>
+                    <p className="text-[12px] text-red-500/90 mt-0.5 leading-snug">
+                      Permanently wipe your profile, posts, comments, and all associated data.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowEditModal(false);
+                      setDeleteConfirmationText('');
+                      setDeleteError('');
+                      setShowDeleteModal(true);
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-[13px] rounded-full transition-all active:scale-95 shadow-sm whitespace-nowrap"
+                  >
+                    Delete Account
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Profile Confirmation Modal */}
+      {showDeleteModal && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => { if (!isDeletingProfile) setShowDeleteModal(false); }}
+        >
+          <div 
+            className="bg-white rounded-3xl w-full max-w-[420px] p-6 sm:p-7 shadow-2xl border border-red-100 flex flex-col text-center animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Warning Icon with pulsating ring */}
+            <div className="mx-auto w-14 h-14 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4 ring-8 ring-red-50">
+              <Trash2 size={26} strokeWidth={2.2} />
+            </div>
+
+            <h3 className="text-[20px] font-black text-[#0F1419] tracking-tight">
+              Delete @{user?.username}?
+            </h3>
+
+            <p className="text-[14px] text-[#536471] mt-2 leading-relaxed">
+              This action is <span className="font-bold text-red-600">permanent and irreversible</span>. All your posts, likes, comments, followers, and profile details will be completely wiped from SOLITX.
+            </p>
+
+            {/* Error Message */}
+            {deleteError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-[13px] font-semibold flex items-center gap-2 text-left">
+                <AlertCircle size={16} className="flex-shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            {/* Confirmation Buttons */}
+            <div className="flex flex-col gap-2.5 mt-6">
+              <button
+                type="button"
+                onClick={handleDeleteProfile}
+                disabled={isDeletingProfile}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-[15px] rounded-full shadow-md hover:shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2"
+              >
+                {isDeletingProfile ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    <span>Deleting account...</span>
+                  </>
+                ) : (
+                  <span>Yes, permanently delete</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeletingProfile}
+                className="w-full py-2.5 bg-white hover:bg-[#F7F9F9] disabled:opacity-50 text-[#0F1419] font-bold text-[14px] rounded-full border border-[#CFD9DE] transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -807,11 +938,11 @@ const Profile = () => {
 
       {/* Followers / Following Modal */}
       {followModalType && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setFollowModalType(null)}
         >
-          <div 
+          <div
             className="bg-white rounded-2xl w-full max-w-[480px] max-h-[80vh] flex flex-col shadow-2xl overflow-hidden border border-gray-100 animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
@@ -821,9 +952,8 @@ const Profile = () => {
                 <button
                   type="button"
                   onClick={() => handleSwitchFollowModalTab('followers')}
-                  className={`pb-1 text-[15px] font-bold relative transition-colors ${
-                    followModalType === 'followers' ? 'text-[#0F1419]' : 'text-[#536471] hover:text-[#0F1419]'
-                  }`}
+                  className={`pb-1 text-[15px] font-bold relative transition-colors ${followModalType === 'followers' ? 'text-[#0F1419]' : 'text-[#536471] hover:text-[#0F1419]'
+                    }`}
                 >
                   Followers
                   {followModalType === 'followers' && (
@@ -833,9 +963,8 @@ const Profile = () => {
                 <button
                   type="button"
                   onClick={() => handleSwitchFollowModalTab('following')}
-                  className={`pb-1 text-[15px] font-bold relative transition-colors ${
-                    followModalType === 'following' ? 'text-[#0F1419]' : 'text-[#536471] hover:text-[#0F1419]'
-                  }`}
+                  className={`pb-1 text-[15px] font-bold relative transition-colors ${followModalType === 'following' ? 'text-[#0F1419]' : 'text-[#536471] hover:text-[#0F1419]'
+                    }`}
                 >
                   Following
                   {followModalType === 'following' && (
@@ -922,11 +1051,10 @@ const Profile = () => {
                         <button
                           type="button"
                           onClick={() => handleToggleFollowInModal(u.username)}
-                          className={`px-4 py-1.5 rounded-full text-[13px] font-bold transition-all flex-shrink-0 active:scale-95 ${
-                            u.is_following
+                          className={`px-4 py-1.5 rounded-full text-[13px] font-bold transition-all flex-shrink-0 active:scale-95 ${u.is_following
                               ? 'bg-white hover:bg-red-50 hover:border-red-300 hover:text-red-600 text-[#0F1419] border border-[#CFD9DE]'
                               : 'bg-[#0F1419] hover:bg-[#272C30] text-white shadow-sm'
-                          }`}
+                            }`}
                         >
                           {u.is_following ? 'Following' : 'Follow'}
                         </button>

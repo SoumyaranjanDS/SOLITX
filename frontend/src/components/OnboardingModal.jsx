@@ -132,14 +132,30 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
     return [`${clean}_${rand1}`, `${clean}${rand2}`, `the_${clean}`, `${clean}_official`];
   };
 
+  // Synchronize with fresh user data when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      try {
+        const freshUser = JSON.parse(localStorage.getItem('user') || '{}');
+        if (freshUser?.username && (!usernameInput || usernameInput === 'solitx_user')) {
+          setUsernameInput(freshUser.username);
+          setAvatarSeed(freshUser.username);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [isOpen]);
+
   // Debounced Username Availability Check
   useEffect(() => {
     if (step !== 1) return;
 
     const trimmed = usernameInput.trim().toLowerCase();
+    const activeUsername = JSON.parse(localStorage.getItem('user') || '{}')?.username?.toLowerCase();
 
     // If matches user's current username, it's valid
-    if (trimmed && trimmed === currentUser?.username?.toLowerCase()) {
+    if (trimmed && (trimmed === currentUser?.username?.toLowerCase() || trimmed === activeUsername)) {
       setUsernameStatus('available');
       setUsernameError('');
       setSuggestionsList([]);
@@ -239,7 +255,8 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
     try {
       setIsFinishing(true);
       const cleanUsername = usernameInput.trim().toLowerCase();
-      const currentParamUsername = currentUser?.username;
+      const freshUser = JSON.parse(localStorage.getItem('user') || '{}');
+      const currentParamUsername = freshUser?.username || currentUser?.username;
 
       const payload = {
         bio: bioInput.trim(),
@@ -250,6 +267,7 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
         const res = await api.put(`/users/${currentParamUsername}`, payload);
         if (res.data?.data?.user) {
           localStorage.setItem('user', JSON.stringify(res.data.data.user));
+          window.dispatchEvent(new Event('storage'));
         }
       }
     } catch (err) {

@@ -20,10 +20,14 @@ const OAuthHandler = ({ children }) => {
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get('token');
   const urlUser = params.get('user');
+  const isNewUser = params.get('isNewUser');
 
   if (urlToken && urlUser) {
     localStorage.setItem('token', urlToken);
     localStorage.setItem('user', urlUser);
+    if (isNewUser === 'true') {
+      localStorage.setItem('show_onboarding', 'true');
+    }
     // Clean up the URL
     window.history.replaceState({}, document.title, window.location.pathname);
   }

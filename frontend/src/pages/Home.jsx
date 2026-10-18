@@ -46,16 +46,26 @@ const Home = () => {
 
   // User check (do not force redirect to /auth for public feed)
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
+    const handleSync = () => {
+      const stored = localStorage.getItem('user');
+      if (stored) {
+        try {
+          setUser(JSON.parse(stored));
+        } catch {
+          setUser(null);
+        }
+      } else {
         setUser(null);
       }
-    } else {
-      setUser(null);
-    }
+
+      if (localStorage.getItem('show_onboarding') === 'true') {
+        setShowOnboarding(true);
+      }
+    };
+
+    handleSync();
+    window.addEventListener('storage', handleSync);
+    return () => window.removeEventListener('storage', handleSync);
   }, []);
 
   // Fetch Feed Function
@@ -429,6 +439,8 @@ const Home = () => {
         isOpen={showOnboarding}
         onComplete={() => {
           setShowOnboarding(false);
+          const freshUser = JSON.parse(localStorage.getItem('user') || 'null');
+          setUser(freshUser);
           fetchFeed();
         }}
       />
