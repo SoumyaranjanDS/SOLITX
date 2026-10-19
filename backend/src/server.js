@@ -42,6 +42,24 @@ app.use(express.json());
 
 const port = process.env.PORT || 5005;
 
+// DAY 22: STATELESSNESS & FAULT INJECTION DRAIN STATE
+let isShuttingDown = false;
+
+app.use((req, res, next) => {
+  if (isShuttingDown) {
+    // Advise client/proxy to close TCP socket and fail over immediately
+    res.setHeader("Connection", "close");
+    return res.status(503).json(
+      new ApiResponse(
+        503,
+        { port, pid: process.pid, shuttingDown: true },
+        "Instance is draining connections for shutdown. Please retry on peer node.",
+      ),
+    );
+  }
+  next();
+});
+
 import authRoutes from "./modules/auth/auth.routes.js";
 import userRoutes from "./modules/users/user.routes.js";
 import postRoutes from "./modules/posts/post.routes.js";
@@ -185,6 +203,29 @@ app.put("/api/v1/test/user/:username", async (req, res, next) => {
   }
 });
 
+// DAY 22: SIMULATED IN-FLIGHT WORKLOAD FOR FAULT INJECTION & DRAIN AUDITING
+app.get("/api/v1/test/workload", async (req, res, next) => {
+  try {
+    const delay = parseInt(req.query.delay || "1500", 10);
+    const start = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          port,
+          pid: process.pid,
+          delayProcessedMs: Date.now() - start,
+          isShuttingDown,
+        },
+        "In-flight workload processed successfully without abrupt termination",
+      ),
+    );
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/v1/health", (req, res) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -229,6 +270,63 @@ app.get("/error-test", async (req, res, next) => {
 
 app.use(errorHandler);
 
+let serverInstance = null;
+
 connectDB().then(() => {
-  httpServer.listen(port, () => console.log(`Server running on port ${port}`));
+  serverInstance = httpServer.listen(port, () =>
+    console.log(`Server running on port ${port} (PID: ${process.pid})`),
+  );
 });
+
+// DAY 22: GRACEFUL SHUTDOWN HANDLER (SIGTERM / SIGINT)
+const gracefulShutdown = async (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n[${signal}] Received termination signal. Initiating graceful shutdown...`);
+
+  // 1. Tell Keep-Alive connections to terminate after current request
+  if (serverInstance && typeof serverInstance.closeIdleConnections === "function") {
+    serverInstance.closeIdleConnections();
+  }
+
+  // 2. Stop accepting new connections while letting in-flight requests finish
+  if (serverInstance) {
+    serverInstance.close(async (err) => {
+      if (err) {
+        console.error("[Shutdown] Error closing HTTP server listener:", err);
+        process.exit(1);
+      }
+      console.log("[Shutdown] HTTP listener closed. In-flight requests successfully drained.");
+
+      try {
+        // 3. Drain and disconnect database connection pool
+        console.log("[Shutdown] Draining database connection pool...");
+        await pool.end();
+        console.log("[Shutdown] PostgreSQL connection pool drained.");
+
+        // 4. Disconnect Redis client
+        console.log("[Shutdown] Closing Redis connection...");
+        await redis.quit();
+        console.log("[Shutdown] Redis disconnected.");
+
+        console.log("[Shutdown] All resources released cleanly. Exiting with code 0.");
+        process.exit(0);
+      } catch (cleanupErr) {
+        console.error("[Shutdown] Error during cleanup teardown:", cleanupErr);
+        process.exit(1);
+      }
+    });
+  } else {
+    process.exit(0);
+  }
+
+  // 5. Hard failsafe timeout: Force exit after 10 seconds if connections refuse to drain
+  const forceExitTimer = setTimeout(() => {
+    console.error("[Shutdown] Forced exit: pending connections took longer than 10s grace limit.");
+    process.exit(1);
+  }, 10000);
+  forceExitTimer.unref();
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
