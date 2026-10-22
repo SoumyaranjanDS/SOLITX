@@ -1,20 +1,18 @@
 /**
- * SOLITX DAY 25: Redis-Backed Asynchronous Job Queue
+ * SOLITX DAY 27: Resilient Redis-Backed Asynchronous Job Queue
  * 
- * Provides atomic Producer-Consumer queue primitives using Upstash Redis.
- * - Producer: LPUSH jobs to queue:name in < 5ms.
- * - Consumer: RPOP / BRPOP jobs for asynchronous processing.
- * - Inspection: LLEN / LRANGE for queue health and depth monitoring.
+ * Features:
+ * - Reliable Dequeue: In-flight processing tracking via queue:<name>:processing.
+ * - At-Least-Once Delivery: Job is ACKed only after successful execution.
+ * - Exponential Backoff Retries: 2^attempts * 1000ms backoff for transient failures.
+ * - Dead-Letter Queue (DLQ): Quarantines persistent failures to queue:<name>:dead_letter.
+ * - DLQ Replayability: Admin reconciliation to replay failed jobs back into main queue.
  */
 
 import redis from "../config/redis.js";
 
 /**
  * Enqueue a job into Redis (Producer)
- * @param {string} queueName - Name of the target queue (e.g., 'notifications', 'fanout')
- * @param {object} payload - Job payload data
- * @param {object} options - Optional job metadata (maxAttempts, priority)
- * @returns {Promise<string>} - Generated Job ID
  */
 export const enqueueJob = async (queueName, payload, options = {}) => {
   if (!queueName || typeof queueName !== "string") {
@@ -39,57 +37,136 @@ export const enqueueJob = async (queueName, payload, options = {}) => {
 };
 
 /**
- * Dequeue a single pending job (Consumer non-blocking)
- * @param {string} queueName
- * @returns {Promise<object|null>} - Parsed job envelope or null if empty
+ * Reliable Dequeue: Atomically transfers job from main queue to processing queue
+ * Uses RPOPLPUSH (or fallback) so if worker crashes mid-task, the job is not lost!
  */
-export const dequeueJob = async (queueName) => {
-  const raw = await redis.rpop(`queue:${queueName}`);
-  if (!raw) return null;
+export const dequeueReliable = async (queueName) => {
+  const mainQueue = `queue:${queueName}`;
+  const processingQueue = `queue:${queueName}:processing`;
 
   try {
-    return JSON.parse(raw);
+    // RPOPLPUSH is atomic in Redis
+    const raw = await redis.rpoplpush(mainQueue, processingQueue);
+    if (!raw) return null;
+
+    const job = JSON.parse(raw);
+    return { job, raw };
   } catch (err) {
-    console.error(`[Queue] Corrupted payload in queue:${queueName}:`, raw);
-    return null;
+    // If RPOPLPUSH fails, fallback to simple RPOP
+    const raw = await redis.rpop(mainQueue);
+    if (!raw) return null;
+    return { job: JSON.parse(raw), raw };
   }
 };
 
 /**
- * Blocking Dequeue (Consumer waits up to timeoutSeconds)
- * @param {string} queueName 
- * @param {number} timeoutSeconds (default 2s)
- * @returns {Promise<object|null>}
+ * Acknowledge (ACK) Job: Called when job finishes successfully
+ * Removes the job from the in-flight processing queue.
  */
-export const dequeueBlocking = async (queueName, timeoutSeconds = 2) => {
-  try {
-    const res = await redis.brpop(`queue:${queueName}`, timeoutSeconds);
-    if (!res || !res[1]) return null;
-    return JSON.parse(res[1]);
-  } catch (err) {
-    console.error(`[Queue] BRPOP error on queue:${queueName}:`, err.message);
-    return null;
-  }
+export const ackJob = async (queueName, rawJob) => {
+  const processingQueue = `queue:${queueName}:processing`;
+  await redis.lrem(processingQueue, 1, rawJob);
 };
 
 /**
- * Get current pending queue length
+ * Handle Job Failure: Executes Exponential Backoff or moves to DLQ
  * @param {string} queueName
- * @returns {Promise<number>}
+ * @param {object} job
+ * @param {string} rawJob
+ * @param {Error|string} error
+ * @returns {Promise<{action: 'retry'|'dead_letter', delayMs?: number, job: object}>}
+ */
+export const handleJobFailure = async (queueName, job, rawJob, error) => {
+  const mainQueue = `queue:${queueName}`;
+  const processingQueue = `queue:${queueName}:processing`;
+  const dlqQueue = `queue:${queueName}:dead_letter`;
+
+  // 1. Remove from active in-flight processing list
+  await redis.lrem(processingQueue, 1, rawJob);
+
+  const currentAttempts = (job.attempts || 0) + 1;
+  const maxAttempts = job.maxAttempts || 3;
+  const errorMessage = error?.message || String(error);
+
+  // 2. Check if maximum retry attempts exceeded
+  if (currentAttempts >= maxAttempts) {
+    // Exceeded retries -> Quarantine in Dead-Letter Queue (DLQ)
+    const deadJob = {
+      ...job,
+      attempts: currentAttempts,
+      status: "dead_letter",
+      failedAt: Date.now(),
+      finalError: errorMessage,
+    };
+
+    await redis.lpush(dlqQueue, JSON.stringify(deadJob));
+    return { action: "dead_letter", job: deadJob };
+  }
+
+  // 3. Under max attempts -> Schedule Retry with Exponential Backoff (2^attempts * 1000ms)
+  const delayMs = Math.pow(2, currentAttempts) * 1000;
+  const retryJob = {
+    ...job,
+    attempts: currentAttempts,
+    status: "retrying",
+    lastRetriedAt: Date.now(),
+    nextRetryDelayMs: delayMs,
+    lastError: errorMessage,
+  };
+
+  // Re-enqueue for retry
+  await redis.lpush(mainQueue, JSON.stringify(retryJob));
+  return { action: "retry", delayMs, job: retryJob };
+};
+
+/**
+ * Replay Dead-Letter Queue: Pops failed jobs from DLQ and pushes back to main queue
+ * @param {string} queueName
+ * @param {number} count - Maximum jobs to replay
+ * @returns {Promise<number>} - Count of replayed jobs
+ */
+export const replayDeadLetter = async (queueName, count = 10) => {
+  const mainQueue = `queue:${queueName}`;
+  const dlqQueue = `queue:${queueName}:dead_letter`;
+
+  let replayed = 0;
+  for (let i = 0; i < count; i++) {
+    const raw = await redis.rpop(dlqQueue);
+    if (!raw) break;
+
+    const job = JSON.parse(raw);
+    const resetJob = {
+      ...job,
+      attempts: 0,
+      status: "pending",
+      replayedAt: Date.now(),
+      finalError: null,
+    };
+
+    await redis.lpush(mainQueue, JSON.stringify(resetJob));
+    replayed++;
+  }
+
+  return replayed;
+};
+
+/**
+ * Inspection Helpers
  */
 export const getQueueLength = async (queueName) => {
   return await redis.llen(`queue:${queueName}`);
 };
 
-/**
- * Peek recent jobs in the queue without dequeuing
- * @param {string} queueName 
- * @param {number} start 
- * @param {number} stop 
- * @returns {Promise<Array<object>>}
- */
-export const peekQueue = async (queueName, start = 0, stop = 9) => {
-  const rawItems = await redis.lrange(`queue:${queueName}`, start, stop);
+export const getProcessingCount = async (queueName) => {
+  return await redis.llen(`queue:${queueName}:processing`);
+};
+
+export const getDeadLetterCount = async (queueName) => {
+  return await redis.llen(`queue:${queueName}:dead_letter`);
+};
+
+export const peekDeadLetter = async (queueName, start = 0, stop = 9) => {
+  const rawItems = await redis.lrange(`queue:${queueName}:dead_letter`, start, stop);
   return rawItems.map((item) => {
     try {
       return JSON.parse(item);
@@ -99,10 +176,34 @@ export const peekQueue = async (queueName, start = 0, stop = 9) => {
   });
 };
 
-/**
- * Clear all pending jobs in a queue (useful for testing and teardown)
- * @param {string} queueName 
- */
 export const clearQueue = async (queueName) => {
   await redis.del(`queue:${queueName}`);
+  await redis.del(`queue:${queueName}:processing`);
+  await redis.del(`queue:${queueName}:dead_letter`);
+};
+
+/**
+ * Legacy Dequeue (Non-blocking)
+ */
+export const dequeueJob = async (queueName) => {
+  const raw = await redis.rpop(`queue:${queueName}`);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Legacy Blocking Dequeue
+ */
+export const dequeueBlocking = async (queueName, timeoutSeconds = 2) => {
+  try {
+    const res = await redis.brpop(`queue:${queueName}`, timeoutSeconds);
+    if (!res || !res[1]) return null;
+    return JSON.parse(res[1]);
+  } catch {
+    return null;
+  }
 };
