@@ -1,9 +1,9 @@
 /**
  * SOLITX DAY 25: Asynchronous Background Worker Process
- * 
+ *
  * Standalone consumer process that polls Redis queues and processes jobs
  * completely detached from the user-facing Express HTTP loop.
- * 
+ *
  * Usage:
  *   node src/worker.js
  */
@@ -22,13 +22,21 @@ let activeJobsCount = 0;
 // Registry of job handlers
 const HANDLERS = {
   notifications: async (job) => {
-    const { recipientId, actorId, type, postId, messageContent } = job.data;
+    const { recipientId, actorId, type, postId, commentId, messageContent } =
+      job.data;
     if (!recipientId || !actorId || recipientId === actorId) return;
 
     await pool.query(
-      `INSERT INTO notifications (recipient_id, actor_id, type, post_id, message_content)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [recipientId, actorId, type, postId || null, messageContent || null]
+      `INSERT INTO notifications (recipient_id, actor_id, type, post_id, comment_id, message_content)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        recipientId,
+        actorId,
+        type,
+        postId || null,
+        commentId || null,
+        messageContent || null,
+      ],
     );
   },
 
@@ -55,7 +63,9 @@ async function processQueue(queueName) {
 
       activeJobsCount++;
       const t0 = performance.now();
-      console.log(`[Worker] Received job ${job.id} from queue:${queueName} (type: ${job.data?.type || 'general'})`);
+      console.log(
+        `[Worker] Received job ${job.id} from queue:${queueName} (type: ${job.data?.type || "general"})`,
+      );
 
       const handler = HANDLERS[queueName];
       if (handler) {
@@ -66,7 +76,10 @@ async function processQueue(queueName) {
         console.warn(`[Worker] No handler registered for queue:${queueName}`);
       }
     } catch (err) {
-      console.error(`[Worker] Error processing queue:${queueName}:`, err.message);
+      console.error(
+        `[Worker] Error processing queue:${queueName}:`,
+        err.message,
+      );
     } finally {
       activeJobsCount = Math.max(0, activeJobsCount - 1);
     }
@@ -74,9 +87,13 @@ async function processQueue(queueName) {
 }
 
 async function startWorker() {
-  console.log("================================================================================");
+  console.log(
+    "================================================================================",
+  );
   console.log("       SOLITX ASYNCHRONOUS BACKGROUND WORKER POOL (DAY 25)");
-  console.log("================================================================================");
+  console.log(
+    "================================================================================",
+  );
   console.log(`Active Queues:  ${ACTIVE_QUEUES.join(", ")}`);
   console.log(`PID:            ${process.pid}`);
   console.log(`Timestamp:      ${new Date().toISOString()}\n`);
@@ -93,17 +110,23 @@ async function startWorker() {
 
 // Graceful Shutdown
 const shutdown = async (signal) => {
-  console.log(`\n[Worker] Received ${signal}. Draining active jobs before shutdown...`);
+  console.log(
+    `\n[Worker] Received ${signal}. Draining active jobs before shutdown...`,
+  );
   isRunning = false;
 
   let retries = 0;
   while (activeJobsCount > 0 && retries < 10) {
-    console.log(`[Worker] Waiting for ${activeJobsCount} in-flight jobs to complete...`);
+    console.log(
+      `[Worker] Waiting for ${activeJobsCount} in-flight jobs to complete...`,
+    );
     await new Promise((r) => setTimeout(r, 500));
     retries++;
   }
 
-  console.log("[Worker] All workers drained. Closing database and Redis connections.");
+  console.log(
+    "[Worker] All workers drained. Closing database and Redis connections.",
+  );
   await pool.end();
   await redis.quit();
   console.log("[Worker] Clean teardown complete. Goodbye.");
