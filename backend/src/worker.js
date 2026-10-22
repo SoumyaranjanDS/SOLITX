@@ -21,7 +21,8 @@ import {
   handleJobFailure, 
   getQueueLength,
   getProcessingCount,
-  getDeadLetterCount
+  getDeadLetterCount,
+  checkAndSetIdempotency
 } from "./queue/jobQueue.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
@@ -41,9 +42,19 @@ const HANDLERS = {
       throw new Error("Simulated Database Transient Lock Error (Deadlock)");
     }
 
+    // DAY 28 IDEMPOTENCY LAYER 1: Fast In-Memory Redis Deduplication Check
+    const idempotencyKey = job.id || `${recipientId}_${actorId}_${type}_${postId || 'null'}`;
+    const isNew = await checkAndSetIdempotency(idempotencyKey, 86400);
+    if (!isNew) {
+      console.log(`[Worker] 🛡️ Idempotency Layer 1: Job ${job.id} already processed. Deduplicating!`);
+      return;
+    }
+
+    // DAY 28 IDEMPOTENCY LAYER 2: PostgreSQL ON CONFLICT (idempotency_key) DO NOTHING
     await pool.query(
-      `INSERT INTO notifications (recipient_id, actor_id, type, post_id, comment_id, message_content)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO notifications (recipient_id, actor_id, type, post_id, comment_id, message_content, idempotency_key)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (idempotency_key) DO NOTHING`,
       [
         recipientId,
         actorId,
@@ -51,6 +62,7 @@ const HANDLERS = {
         postId || null,
         commentId || null,
         messageContent || null,
+        idempotencyKey,
       ]
     );
   },

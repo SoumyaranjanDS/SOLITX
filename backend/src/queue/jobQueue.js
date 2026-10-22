@@ -183,6 +183,25 @@ export const clearQueue = async (queueName) => {
 };
 
 /**
+ * Check and Set Idempotency Key (SETNX with TTL)
+ * Atomically reserves a job execution key.
+ * @param {string} idempotencyKey - Unique key identifying the operation
+ * @param {number} ttlSeconds - Duration to maintain the deduplication window (default 24h)
+ * @returns {Promise<boolean>} - true if this is the first execution (key acquired), false if duplicate
+ */
+export const checkAndSetIdempotency = async (idempotencyKey, ttlSeconds = 86400) => {
+  const result = await redis.set(`idempotency:${idempotencyKey}`, "1", "EX", ttlSeconds, "NX");
+  return result === "OK";
+};
+
+/**
+ * Release an idempotency key (used if a job fails and must be allowed to retry)
+ */
+export const releaseIdempotency = async (idempotencyKey) => {
+  await redis.del(`idempotency:${idempotencyKey}`);
+};
+
+/**
  * Legacy Dequeue (Non-blocking)
  */
 export const dequeueJob = async (queueName) => {

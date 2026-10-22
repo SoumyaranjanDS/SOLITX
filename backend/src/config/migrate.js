@@ -144,6 +144,8 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_notifications_recipient_id ON notifications (recipient_id, created_at DESC);
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS comment_id UUID REFERENCES comments(id) ON DELETE CASCADE;
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message_content TEXT;
+      ALTER TABLE notifications ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(100);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_idempotency_key ON notifications (idempotency_key);
     `);
     console.log("'notifications' table, columns, and indexes verified successfully!");
 
