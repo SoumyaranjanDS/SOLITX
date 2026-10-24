@@ -111,8 +111,14 @@ const runMigrations = async () => {
     await pool.query(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS username_set BOOLEAN DEFAULT FALSE;`,
     );
+    await pool.query(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`,
+    );
+    await pool.query(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT;`,
+    );
     console.log(
-      "'users.name', 'users.bio_link', and 'users.username_set' columns verified successfully!",
+      "'users.name', 'users.bio_link', 'users.username_set', 'users.avatar_url', and 'users.banner_url' columns verified successfully!",
     );
 
     await pool.query(
@@ -147,7 +153,9 @@ const runMigrations = async () => {
       ALTER TABLE notifications ADD COLUMN IF NOT EXISTS idempotency_key VARCHAR(100);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_idempotency_key ON notifications (idempotency_key);
     `);
-    console.log("'notifications' table, columns, and indexes verified successfully!");
+    console.log(
+      "'notifications' table, columns, and indexes verified successfully!",
+    );
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -198,7 +206,9 @@ const runMigrations = async () => {
         UNIQUE (list_id, user_id)
       );
     `);
-    console.log("'lists', 'list_members', 'list_followers' tables verified successfully!");
+    console.log(
+      "'lists', 'list_members', 'list_followers' tables verified successfully!",
+    );
 
     // Communities & Community Members
     await pool.query(`
@@ -224,7 +234,9 @@ const runMigrations = async () => {
       );
       CREATE INDEX IF NOT EXISTS idx_community_members_user ON community_members (user_id);
     `);
-    console.log("'communities', 'community_members' tables verified successfully!");
+    console.log(
+      "'communities', 'community_members' tables verified successfully!",
+    );
 
     // Posts Community Association
     await pool.query(`
@@ -262,7 +274,9 @@ const runMigrations = async () => {
       ALTER TABLE posts ADD COLUMN IF NOT EXISTS has_media BOOLEAN DEFAULT FALSE;
       CREATE INDEX IF NOT EXISTS idx_posts_has_media ON posts (has_media);
     `);
-    console.log("'media' table and 'posts.has_media' column verified successfully!");
+    console.log(
+      "'media' table and 'posts.has_media' column verified successfully!",
+    );
   } catch (error) {
     console.error("Migration failed:", error.message);
   } finally {

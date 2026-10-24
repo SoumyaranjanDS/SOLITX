@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { SolitxLogo } from './AppShell';
 import api from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 // Comprehensive mainstream categories matching Twitter / X explore topics
 const INTEREST_CATEGORIES = [
@@ -517,7 +518,7 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-11 h-11 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border border-gray-100">
                             <img
-                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                              src={getAvatarUrl(u)}
                               alt={u.username}
                               className="w-full h-full object-cover"
                             />

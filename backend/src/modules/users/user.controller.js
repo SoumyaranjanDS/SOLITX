@@ -27,7 +27,7 @@ export const getUserProfile = async (req, res, next) => {
     if (currentUserId) {
       query = `
         SELECT 
-          u.id, u.name, u.username, u.email, u.bio, u.bio_link, u.created_at,
+          u.id, u.name, u.username, u.email, u.bio, u.bio_link, u.avatar_url, u.banner_url, u.created_at,
           (SELECT COUNT(*)::int FROM follows WHERE follower_id = u.id) as following_count,
           (SELECT COUNT(*)::int FROM follows WHERE following_id = u.id) as followers_count,
           EXISTS(SELECT 1 FROM follows WHERE follower_id = $2 AND following_id = u.id) as is_following
@@ -38,7 +38,7 @@ export const getUserProfile = async (req, res, next) => {
     } else {
       query = `
         SELECT 
-          u.id, u.name, u.username, u.email, u.bio, u.bio_link, u.created_at,
+          u.id, u.name, u.username, u.email, u.bio, u.bio_link, u.avatar_url, u.banner_url, u.created_at,
           (SELECT COUNT(*)::int FROM follows WHERE follower_id = u.id) as following_count,
           (SELECT COUNT(*)::int FROM follows WHERE following_id = u.id) as followers_count,
           false as is_following
@@ -68,7 +68,7 @@ export const getUserProfile = async (req, res, next) => {
 export const updateUserProfile = async (req, res, next) => {
   try {
     const { username: paramUsername } = req.params;
-    const { name, bio, bio_link, newUsername } = req.body;
+    const { name, bio, bio_link, avatar_url, banner_url, newUsername } = req.body;
     
     // Ensure the user is only updating their own profile
     const currentUserId = req.user.id;
@@ -120,16 +120,20 @@ export const updateUserProfile = async (req, res, next) => {
         name = COALESCE($1, name),
         bio = COALESCE($2, bio), 
         bio_link = COALESCE($3, bio_link),
-        username = $4,
-        username_set = $5,
+        avatar_url = COALESCE($4, avatar_url),
+        banner_url = COALESCE($5, banner_url),
+        username = $6,
+        username_set = $7,
         updated_at = NOW() 
-      WHERE id = $6 
-      RETURNING id, name, username, email, bio, bio_link, created_at, updated_at;
+      WHERE id = $8 
+      RETURNING id, name, username, email, bio, bio_link, avatar_url, banner_url, created_at, updated_at;
     `;
     const result = await pool.query(updateQuery, [
       name !== undefined ? name.trim() : null,
       bio !== undefined ? bio.trim() : null,
       bio_link !== undefined ? bio_link.trim() : null,
+      avatar_url !== undefined ? avatar_url.trim() : null,
+      banner_url !== undefined ? banner_url.trim() : null,
       targetUsername,
       markUsernameSet,
       currentUserId

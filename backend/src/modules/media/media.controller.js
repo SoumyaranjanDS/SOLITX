@@ -34,6 +34,7 @@ export const requestUploadUrl = async (req, res, next) => {
     );
 
     const media = result.rows[0];
+    const publicUrl = buildPublicMediaUrl(s3Key);
 
     return res.status(201).json(
       new ApiResponse(
@@ -41,6 +42,7 @@ export const requestUploadUrl = async (req, res, next) => {
         {
           media_id: media.id,
           upload_url: uploadUrl,
+          public_url: publicUrl,
           s3_key: s3Key,
           bucket,
           expires_in: expiresInSeconds,
@@ -95,11 +97,14 @@ export const confirmUpload = async (req, res, next) => {
       idempotency_key: `media:process:${media.id}`,
     });
 
+    const publicUrl = buildPublicMediaUrl(media.s3_key_raw);
+
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           media_id: media.id,
+          public_url: publicUrl,
           status: "processing",
           job_id: jobId,
         },

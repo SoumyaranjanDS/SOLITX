@@ -15,11 +15,15 @@ import {
   Heart,
   Image as ImageIcon,
   FileText,
-  Trash2
+  Trash2,
+  Camera,
+  Loader2
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard, { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
+import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
+import { getAvatarUrl } from '../utils/avatar';
 
 const TABS = ['Posts', 'Replies', 'Media', 'Likes'];
 
@@ -81,7 +85,7 @@ const ProfileReplyCard = ({ reply, onNavigate }) => {
           className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
         >
           <img
-            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${reply.username}`}
+            src={getAvatarUrl(reply)}
             alt={reply.username}
             className="w-full h-full object-cover"
           />
@@ -156,10 +160,24 @@ const Profile = () => {
   const [editUsername, setEditUsername] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editBioLink, setEditBioLink] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [editBannerUrl, setEditBannerUrl] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [editError, setEditError] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Upload States (Direct page upload)
+  const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+  const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
+
+  // Modal Upload States (Inside Edit Modal)
+  const [modalBannerUploading, setModalBannerUploading] = useState(false);
+  const [modalBannerProgress, setModalBannerProgress] = useState(0);
+  const [modalAvatarUploading, setModalAvatarUploading] = useState(false);
+  const [modalAvatarProgress, setModalAvatarProgress] = useState(0);
 
   // Delete Profile Modal State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -193,6 +211,8 @@ const Profile = () => {
           username: apiUser.username,
           bio: apiUser.bio || '',
           bio_link: apiUser.bio_link || '',
+          avatar_url: apiUser.avatar_url || '',
+          banner_url: apiUser.banner_url || '',
           joinDate: new Date(apiUser.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
           following: parseInt(apiUser.following_count, 10) || 0,
           followers: parseInt(apiUser.followers_count, 10) || 0,
@@ -204,6 +224,8 @@ const Profile = () => {
         setEditUsername(apiUser.username || '');
         setEditBio(apiUser.bio || '');
         setEditBioLink(apiUser.bio_link || '');
+        setEditAvatarUrl(apiUser.avatar_url || '');
+        setEditBannerUrl(apiUser.banner_url || '');
       }
     } catch {
       setUser({
@@ -211,6 +233,8 @@ const Profile = () => {
         username,
         bio: '',
         bio_link: '',
+        avatar_url: '',
+        banner_url: '',
         joinDate: 'October 2024',
         following: 0,
         followers: 0,
@@ -344,7 +368,111 @@ const Profile = () => {
     }
   };
 
-  // Save Profile: Name, Bio, Bio Link (Username is permanent)
+  // Direct Banner Upload (from profile header)
+  const handleDirectBannerUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingBanner(true);
+      setBannerUploadProgress(0);
+
+      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
+        setBannerUploadProgress(percent);
+      });
+
+      // Persist to backend immediately
+      const res = await api.put(`/users/${username}`, { banner_url: publicUrl });
+      const updatedUser = res.data?.data?.user;
+
+      setUser(prev => ({ ...prev, banner_url: publicUrl }));
+      setEditBannerUrl(publicUrl);
+
+      // Update localStorage & trigger event
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedStored = { ...stored, banner_url: publicUrl };
+      localStorage.setItem('user', JSON.stringify(updatedStored));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
+
+      displayToast('Banner image updated successfully');
+    } catch (err) {
+      displayToast(err.message || 'Failed to upload banner');
+    } finally {
+      setIsUploadingBanner(false);
+      e.target.value = '';
+    }
+  };
+
+  // Direct Avatar Upload (from profile avatar circle)
+  const handleDirectAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingAvatar(true);
+      setAvatarUploadProgress(0);
+
+      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
+        setAvatarUploadProgress(percent);
+      });
+
+      // Persist to backend immediately
+      const res = await api.put(`/users/${username}`, { avatar_url: publicUrl });
+      const updatedUser = res.data?.data?.user;
+
+      setUser(prev => ({ ...prev, avatar_url: publicUrl }));
+      setEditAvatarUrl(publicUrl);
+
+      // Update localStorage & trigger event
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedStored = { ...stored, avatar_url: publicUrl };
+      localStorage.setItem('user', JSON.stringify(updatedStored));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
+
+      displayToast('Profile picture updated successfully');
+    } catch (err) {
+      displayToast(err.message || 'Failed to upload profile picture');
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = '';
+    }
+  };
+
+  // Upload handler inside the Edit Profile Modal
+  const handleModalImageUpload = async (e, type) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === 'banner') {
+      try {
+        setModalBannerUploading(true);
+        setModalBannerProgress(0);
+        const { publicUrl } = await uploadMediaDirectToS3(file, (pct) => setModalBannerProgress(pct));
+        setEditBannerUrl(publicUrl);
+      } catch (err) {
+        setEditError(err.message || 'Failed to upload banner');
+      } finally {
+        setModalBannerUploading(false);
+        e.target.value = '';
+      }
+    } else {
+      try {
+        setModalAvatarUploading(true);
+        setModalAvatarProgress(0);
+        const { publicUrl } = await uploadMediaDirectToS3(file, (pct) => setModalAvatarProgress(pct));
+        setEditAvatarUrl(publicUrl);
+      } catch (err) {
+        setEditError(err.message || 'Failed to upload profile picture');
+      } finally {
+        setModalAvatarUploading(false);
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Save Profile: Name, Bio, Bio Link, Avatar & Banner
   const handleSaveProfile = async () => {
     setEditError('');
     const cleanName = editName.trim();
@@ -362,6 +490,8 @@ const Profile = () => {
         name: cleanName,
         bio: cleanBio,
         bio_link: cleanBioLink,
+        avatar_url: editAvatarUrl || undefined,
+        banner_url: editBannerUrl || undefined,
       };
 
       const res = await api.put(`/users/${username}`, payload);
@@ -374,17 +504,24 @@ const Profile = () => {
           username: updatedUser.username,
           bio: updatedUser.bio || '',
           bio_link: updatedUser.bio_link || '',
+          avatar_url: updatedUser.avatar_url || '',
+          banner_url: updatedUser.banner_url || '',
         }));
 
         // Update stored user in localStorage
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        localStorage.setItem('user', JSON.stringify({
+        const updatedStored = {
           ...stored,
           name: updatedUser.name,
           username: updatedUser.username,
           bio: updatedUser.bio,
           bio_link: updatedUser.bio_link,
-        }));
+          avatar_url: updatedUser.avatar_url,
+          banner_url: updatedUser.banner_url,
+        };
+        localStorage.setItem('user', JSON.stringify(updatedStored));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser }));
 
         setShowEditModal(false);
         displayToast('Profile updated successfully');
@@ -477,18 +614,84 @@ const Profile = () => {
         </div>
 
         {/* Cover Photo Banner */}
-        <div className="h-[130px] sm:h-[200px] bg-gradient-to-r from-gray-800 via-[#1E2329] to-black w-full" />
+        <div className="h-[140px] sm:h-[200px] w-full relative bg-gradient-to-r from-gray-900 via-[#1E2329] to-black overflow-hidden group/banner">
+          {user?.banner_url ? (
+            <img
+              src={user.banner_url}
+              alt="Banner"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-r from-violet-950 via-slate-900 to-indigo-950" />
+          )}
+
+          {/* Direct Banner Upload for Own Profile */}
+          {isOwnProfile && (
+            <label
+              className="absolute top-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 opacity-90 hover:opacity-100 group-hover/banner:opacity-100 border border-white/10"
+              title="Change banner image"
+            >
+              <Camera size={15} />
+              <span className="text-[12px] font-semibold hidden sm:inline">Edit banner</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleDirectBannerUpload}
+                disabled={isUploadingBanner}
+              />
+            </label>
+          )}
+
+          {/* Banner Uploading Overlay */}
+          {isUploadingBanner && (
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20 transition-all">
+              <div className="w-8 h-8 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-2" />
+              <div className="flex items-center gap-1 text-[13px] font-bold">
+                <span>Uploading banner</span>
+                <span className="animate-pulse">...</span>
+                <span className="text-violet-300 ml-1">{bannerUploadProgress}%</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Profile Info Section */}
         <div className="px-4 pb-4">
           <div className="flex justify-between items-start">
             {/* Avatar */}
-            <div className="-mt-12 sm:-mt-16 w-[76px] h-[76px] sm:w-[134px] sm:h-[134px] rounded-full border-4 border-white bg-gray-200 overflow-hidden flex-shrink-0 relative z-10 shadow-sm">
+            <div className="-mt-12 sm:-mt-16 w-[82px] h-[82px] sm:w-[134px] sm:h-[134px] rounded-full border-4 border-white bg-gray-100 overflow-hidden flex-shrink-0 relative z-10 shadow-md group/avatar">
               <img
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.username}`}
-                alt="Avatar"
-                className="w-full h-full object-cover"
+                src={getAvatarUrl(user)}
+                alt={user?.username || 'Avatar'}
+                className="w-full h-full object-cover bg-white"
               />
+
+              {/* Direct Avatar Upload for Own Profile */}
+              {isOwnProfile && (
+                <label
+                  className="absolute inset-0 bg-black/45 hover:bg-black/65 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                  title="Change profile picture"
+                >
+                  <Camera size={22} className="drop-shadow-md" />
+                  <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">Edit</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleDirectAvatarUpload}
+                    disabled={isUploadingAvatar}
+                  />
+                </label>
+              )}
+
+              {/* Avatar Uploading Overlay */}
+              {isUploadingAvatar && (
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                  <div className="w-6 h-6 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
+                  <span className="text-[10px] font-bold">{avatarUploadProgress}%</span>
+                </div>
+              )}
             </div>
 
             {/* Profile Action Button */}
@@ -501,6 +704,8 @@ const Profile = () => {
                       setEditUsername(user?.username || '');
                       setEditBio(user?.bio || '');
                       setEditBioLink(user?.bio_link || '');
+                      setEditAvatarUrl(user?.avatar_url || '');
+                      setEditBannerUrl(user?.banner_url || '');
                       setEditError('');
                       setShowEditModal(true);
                     }}
@@ -763,7 +968,70 @@ const Profile = () => {
             )}
 
             {/* Scrollable Form Body */}
-            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+            <div className="overflow-y-auto flex-1">
+              {/* Modal Cover Photo Banner */}
+              <div className="relative h-32 sm:h-36 bg-gradient-to-r from-gray-900 via-[#1E2329] to-black w-full overflow-hidden flex items-center justify-center group/modalBanner">
+                {editBannerUrl ? (
+                  <img
+                    src={editBannerUrl}
+                    alt="Banner preview"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-r from-violet-950 via-slate-900 to-indigo-950" />
+                )}
+
+                {/* Banner Camera Picker */}
+                <label className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full text-white cursor-pointer transition-all active:scale-95 shadow-md flex items-center gap-1.5 z-10 border border-white/10">
+                  <Camera size={18} />
+                  <span className="text-[12px] font-semibold pr-1">Change Banner</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleModalImageUpload(e, 'banner')}
+                    disabled={modalBannerUploading}
+                  />
+                </label>
+
+                {modalBannerUploading && (
+                  <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center text-white z-20 gap-2">
+                    <div className="w-5 h-5 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin" />
+                    <span className="text-[12px] font-bold">Uploading... {modalBannerProgress}%</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Avatar Row */}
+              <div className="px-6 relative -mt-10 sm:-mt-12 flex items-center justify-between z-20 mb-4">
+                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white bg-gray-100 overflow-hidden shadow-md group/modalAvatar">
+                  <img
+                    src={getAvatarUrl(editAvatarUrl || user)}
+                    alt="Avatar preview"
+                    className="w-full h-full object-cover bg-white"
+                  />
+                  <label className="absolute inset-0 bg-black/45 hover:bg-black/65 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer transition-all">
+                    <Camera size={20} />
+                    <span className="text-[10px] font-bold mt-0.5">Change</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleModalImageUpload(e, 'avatar')}
+                      disabled={modalAvatarUploading}
+                    />
+                  </label>
+                  {modalAvatarUploading && (
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                      <div className="w-5 h-5 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
+                      <span className="text-[10px] font-bold">{modalAvatarProgress}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Fields */}
+              <div className="px-6 pb-6 space-y-5">
               {/* Field 1: Name (Display Name) */}
               <div className="space-y-1">
                 <div className="rounded-xl border border-[#CFD9DE] focus-within:border-[#0F1419] focus-within:ring-1 focus-within:ring-[#0F1419] px-3.5 py-2 transition-all bg-white">
@@ -872,6 +1140,7 @@ const Profile = () => {
             </div>
           </div>
         </div>
+      </div>
       )}
 
       {/* Delete Profile Confirmation Modal */}
@@ -1027,7 +1296,7 @@ const Profile = () => {
                       >
                         <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
                           <img
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                            src={getAvatarUrl(u)}
                             alt={u.username}
                             className="w-full h-full object-cover"
                           />

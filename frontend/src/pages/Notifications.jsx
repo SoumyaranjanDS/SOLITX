@@ -19,6 +19,7 @@ import {
 import AppShell from '../components/AppShell';
 import { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 const Notifications = () => {
   const navigate = useNavigate();
@@ -109,7 +110,7 @@ const Notifications = () => {
                   title="Open menu"
                 >
                   <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
+                    src={getAvatarUrl(currentUser)}
                     alt="me"
                     className="w-full h-full object-cover"
                   />
@@ -314,7 +315,7 @@ const Notifications = () => {
                         className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 cursor-pointer"
                       >
                         <img
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${notif.actor_username}`}
+                          src={getAvatarUrl(notif.actor_avatar_url || notif.actor_username)}
                           alt={notif.actor_username}
                           className="w-full h-full object-cover"
                         />

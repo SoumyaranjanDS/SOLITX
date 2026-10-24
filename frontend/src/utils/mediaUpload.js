@@ -70,7 +70,8 @@ export async function uploadMediaDirectToS3(file, onProgress) {
   });
 
   // 4. Confirm upload with backend & enqueue asynchronous Sharp WebP worker
-  await api.post("/media/confirm", { media_id });
+  const confirmRes = await api.post("/media/confirm", { media_id });
+  const publicUrl = confirmRes.data?.data?.public_url || grantRes.data?.data?.public_url || '';
 
-  return { mediaId: media_id };
+  return { mediaId: media_id, publicUrl };
 }

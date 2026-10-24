@@ -16,6 +16,7 @@ import {
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
 import api from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 const ListDetail = () => {
   const { id } = useParams();
@@ -451,7 +452,7 @@ const ListDetail = () => {
                   >
                     <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                       <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${member.username}`}
+                        src={getAvatarUrl(member)}
                         alt={member.username}
                         className="w-full h-full object-cover"
                       />
@@ -539,7 +540,7 @@ const ListDetail = () => {
                           <div className="flex items-center gap-2.5 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                               <img
-                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                                src={getAvatarUrl(u)}
                                 alt={u.username}
                                 className="w-full h-full object-cover"
                               />

@@ -264,6 +264,7 @@ export const getListFeed = async (req, res, next) => {
         u.name as author_name,
         u.username,
         u.bio as author_bio,
+        u.avatar_url as author_avatar_url,
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         ${selectLiked},

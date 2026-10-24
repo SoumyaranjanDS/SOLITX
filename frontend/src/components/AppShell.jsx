@@ -24,6 +24,7 @@ import {
 import ComposeModal from './ComposeModal';
 import api from '../api';
 import { getSocket, disconnectSocket } from '../socket';
+import { getAvatarUrl } from '../utils/avatar';
 
 // ─── SOLITX Logo ──────────────────────────────────────────────────────────────
 export const SolitxLogo = ({ size = 30 }) => (
@@ -104,7 +105,7 @@ const NotificationToast = ({ notification, onClose, onClick }) => {
       <div className="relative flex-shrink-0">
         <div className="w-10 h-10 rounded-full bg-purple-100 overflow-hidden ring-2 ring-purple-100">
           <img
-            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${notification.actor_username || 'user'}`}
+            src={getAvatarUrl(notification.actor_avatar_url || notification.actor_username)}
             alt=""
             className="w-full h-full object-cover"
           />
@@ -145,7 +146,28 @@ const NotificationToast = ({ notification, onClose, onClick }) => {
 const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBottomPadding = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      try {
+        const stored = localStorage.getItem('user');
+        if (stored) setUser(JSON.parse(stored));
+      } catch {}
+    };
+    window.addEventListener('user-updated', handleUserUpdate);
+    window.addEventListener('storage', handleUserUpdate);
+    return () => {
+      window.removeEventListener('user-updated', handleUserUpdate);
+      window.removeEventListener('storage', handleUserUpdate);
+    };
+  }, []);
 
   const [unreadNotifsCount, setUnreadNotifsCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
@@ -479,7 +501,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded-full bg-gray-300 overflow-hidden flex-shrink-0">
-                          <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${person.username}`} alt={person.username} className="w-full h-full object-cover" />
+                          <img src={getAvatarUrl(person)} alt={person.username} className="w-full h-full object-cover" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-[15px] text-[#0F1419] truncate">{person.username}</p>
@@ -626,7 +648,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
                     onClick={() => { setIsDrawerOpen(false); navigate(`/profile/${user.username}`); }}
                     className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-pointer active:scale-95 transition-transform"
                   >
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} alt="Avatar" className="w-full h-full object-cover" />
+                    <img src={getAvatarUrl(user)} alt="Avatar" className="w-full h-full object-cover" />
                   </div>
                   <button 
                     onClick={() => setIsDrawerOpen(false)} 

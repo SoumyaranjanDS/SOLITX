@@ -23,6 +23,7 @@ import AppShell, { SolitxLogo } from '../components/AppShell';
 import AuthRequiredModal from '../components/AuthRequiredModal';
 import { formatViews } from '../components/PostCard';
 import api from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 // YouTube-style natural English relative timestamp
 export const formatYouTubeTime = (timestamp) => {
@@ -486,7 +487,7 @@ const PostDetail = () => {
                     className="w-12 h-12 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 hover:opacity-90 transition-opacity border border-gray-100"
                   >
                     <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.username}`}
+                      src={getAvatarUrl(post)}
                       alt={post.username}
                       className="w-full h-full object-cover"
                     />
@@ -755,7 +756,7 @@ const PostDetail = () => {
                 <div className="flex gap-3">
                   <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 border border-gray-100">
                     <img
-                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.username}`}
+                      src={getAvatarUrl(currentUser)}
                       alt="me"
                       className="w-full h-full object-cover"
                     />
@@ -870,7 +871,7 @@ const PostDetail = () => {
                           className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 hover:opacity-90 transition-opacity border border-gray-100"
                         >
                           <img
-                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.username}`}
+                            src={getAvatarUrl(comment)}
                             alt={comment.username}
                             className="w-full h-full object-cover"
                           />
@@ -948,7 +949,7 @@ const PostDetail = () => {
                             <div className="mt-3 pt-3 border-t border-[#EFF3F4] flex gap-2.5 items-start animate-in fade-in duration-150">
                               <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                                 <img
-                                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.username}`}
+                                  src={getAvatarUrl(currentUser)}
                                   alt="me"
                                   className="w-full h-full object-cover"
                                 />
@@ -1025,7 +1026,7 @@ const PostDetail = () => {
                                           className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 hover:opacity-90 transition-opacity border border-gray-100"
                                         >
                                           <img
-                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${child.username}`}
+                                            src={getAvatarUrl(child)}
                                             alt={child.username}
                                             className="w-full h-full object-cover"
                                           />

@@ -104,7 +104,7 @@ export const createPost = async (req, res, next) => {
     }
 
     // Fetch author info to return complete post object for immediate UI render
-    const userQuery = `SELECT id, name, username, bio FROM users WHERE id = $1;`;
+    const userQuery = `SELECT id, name, username, bio, avatar_url FROM users WHERE id = $1;`;
     const userResult = await pool.query(userQuery, [userId]);
     const author = userResult.rows[0];
 
@@ -114,6 +114,7 @@ export const createPost = async (req, res, next) => {
       author_name: author.name || author.username,
       username: author.username,
       author_bio: author.bio,
+      author_avatar_url: author.avatar_url,
       community_id: validCommunityId,
       community_name: communityInfo?.name || null,
       community_slug: communityInfo?.slug || null,
@@ -203,6 +204,7 @@ export const getFeed = async (req, res, next) => {
           u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -230,6 +232,7 @@ export const getFeed = async (req, res, next) => {
           u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
@@ -308,6 +311,7 @@ export const getFeed = async (req, res, next) => {
         u.name as author_name,
         u.username,
         u.bio as author_bio,
+        u.avatar_url as author_avatar_url,
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         ${selectLiked},
@@ -376,6 +380,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -401,6 +406,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -428,6 +434,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -453,6 +460,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -484,6 +492,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               p.content as parent_post_content,
               pu.username as parent_post_author_username,
               pu.name as parent_post_author_name,
@@ -512,6 +521,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               p.content as parent_post_content,
               pu.username as parent_post_author_username,
               pu.name as parent_post_author_name,
@@ -542,6 +552,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               p.content as parent_post_content,
               pu.username as parent_post_author_username,
               pu.name as parent_post_author_name,
@@ -570,6 +581,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               p.content as parent_post_content,
               pu.username as parent_post_author_username,
               pu.name as parent_post_author_name,
@@ -604,6 +616,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -630,6 +643,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -657,6 +671,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -683,6 +698,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -713,6 +729,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -737,6 +754,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -763,6 +781,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -787,6 +806,7 @@ export const getUserPosts = async (req, res, next) => {
               u.name as author_name,
               u.username,
               u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
@@ -863,6 +883,7 @@ export const getPostById = async (req, res, next) => {
           u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
@@ -891,6 +912,7 @@ export const getPostById = async (req, res, next) => {
           u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
@@ -1132,14 +1154,16 @@ export const createComment = async (req, res, next) => {
     }
 
     // Fetch author info
-    const userResult = await pool.query("SELECT username, bio FROM users WHERE id = $1", [userId]);
+    const userResult = await pool.query("SELECT username, bio, avatar_url, name FROM users WHERE id = $1", [userId]);
     const author = userResult.rows[0];
 
     const fullComment = {
       ...comment,
       author_id: userId,
-      username: author.username,
-      author_bio: author.bio,
+      author_name: author?.name || author?.username,
+      username: author?.username,
+      author_bio: author?.bio,
+      author_avatar_url: author?.avatar_url,
       likes_count: 0,
       has_liked: false,
     };
@@ -1180,8 +1204,10 @@ export const getComments = async (req, res, next) => {
           c.created_at,
           c.updated_at,
           u.id as author_id,
+          u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
           EXISTS(SELECT 1 FROM comment_likes cl WHERE cl.comment_id = c.id AND cl.user_id = $2) as has_liked
         FROM comments c
@@ -1200,8 +1226,10 @@ export const getComments = async (req, res, next) => {
           c.created_at,
           c.updated_at,
           u.id as author_id,
+          u.name as author_name,
           u.username,
           u.bio as author_bio,
+          u.avatar_url as author_avatar_url,
           (SELECT COUNT(*)::int FROM comment_likes cl WHERE cl.comment_id = c.id) as likes_count,
           false as has_liked
         FROM comments c
@@ -1374,6 +1402,7 @@ export const getBookmarks = async (req, res, next) => {
         u.name as author_name,
         u.username,
         u.bio as author_bio,
+        u.avatar_url as author_avatar_url,
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,

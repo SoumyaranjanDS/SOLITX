@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, ImageIcon, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check, Loader2 } from 'lucide-react';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
+import { getAvatarUrl } from '../utils/avatar';
 
 const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = null }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -136,7 +137,7 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
         <div className="p-4 flex gap-3 flex-1 overflow-y-auto">
           <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
             <img
-              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.username}`}
+              src={getAvatarUrl(currentUser)}
               alt="me"
               className="w-full h-full object-cover"
             />
@@ -243,14 +244,21 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
 
                 {/* Uploading progress overlay */}
                 {mediaState.status === 'uploading' && (
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white px-6">
-                    <Loader2 size={30} className="animate-spin text-[#A78BFA] mb-3" />
-                    <p className="text-[13px] font-semibold tracking-wide">
-                      Uploading to AWS S3... {mediaState.progress}%
-                    </p>
-                    <div className="w-48 h-1.5 bg-white/20 rounded-full mt-2.5 overflow-hidden">
+                  <div className="absolute inset-0 bg-black/65 backdrop-blur-md flex flex-col items-center justify-center text-white px-6 transition-all duration-200">
+                    <div className="relative mb-3 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin" />
+                      <div className="absolute inset-0 rounded-full bg-violet-500/10 animate-ping opacity-30" />
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[14px] font-bold text-white tracking-wide">
+                      <span>Uploading</span>
+                      <span className="flex tracking-widest animate-pulse">...</span>
+                      <span className="text-[12px] font-semibold text-violet-300 ml-1 tabular-nums">
+                        {mediaState.progress}%
+                      </span>
+                    </div>
+                    <div className="w-48 h-1.5 bg-white/15 rounded-full mt-3 overflow-hidden p-0.5">
                       <div
-                        className="h-full bg-[#7C3AED] transition-all duration-150 rounded-full"
+                        className="h-full bg-gradient-to-r from-violet-500 to-indigo-500 rounded-full transition-all duration-200 shadow-[0_0_8px_rgba(139,92,246,0.5)]"
                         style={{ width: `${mediaState.progress}%` }}
                       />
                     </div>
@@ -259,9 +267,9 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
 
                 {/* Ready Badge */}
                 {mediaState.status === 'ready' && (
-                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/70 backdrop-blur-md text-white text-[11px] font-bold rounded-full flex items-center gap-1.5 shadow-md">
+                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold rounded-full flex items-center gap-1.5 shadow-md border border-white/10">
                     <Check size={12} className="text-emerald-400 stroke-[3]" />
-                    <span>S3 Ready · Sharp Pipeline</span>
+                    <span>Photo attached</span>
                   </div>
                 )}
 

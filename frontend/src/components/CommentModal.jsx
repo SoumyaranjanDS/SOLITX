@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Send, Trash2, MessageCircle } from 'lucide-react';
 import { formatRelativeTime } from './PostCard';
 import api from '../api';
+import { getAvatarUrl } from '../utils/avatar';
 
 const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -109,7 +110,7 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
 
             <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 z-10">
               <img
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.username}`}
+                src={getAvatarUrl(post)}
                 alt={post.username}
                 className="w-full h-full object-cover"
               />
@@ -132,7 +133,7 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
           <div className="flex gap-3 pt-2">
             <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 z-10">
               <img
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.username}`}
+                src={getAvatarUrl(currentUser)}
                 alt="me"
                 className="w-full h-full object-cover"
               />
@@ -204,7 +205,7 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
                     <div key={comment.id} className="py-3 flex gap-3 group">
                       <div className="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                         <img
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${comment.username}`}
+                          src={getAvatarUrl(comment)}
                           alt={comment.username}
                           className="w-full h-full object-cover"
                         />

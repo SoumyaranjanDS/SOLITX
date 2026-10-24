@@ -18,6 +18,7 @@ import AppShell from '../components/AppShell';
 import { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
 import { getSocket } from '../socket';
+import { getAvatarUrl } from '../utils/avatar';
 
 const QUICK_GREETINGS = [
   '👋 Hey there!',
@@ -392,7 +393,7 @@ const Messages = () => {
                   title="Open menu"
                 >
                   <img
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser.username}`}
+                    src={getAvatarUrl(currentUser)}
                     alt="me"
                     className="w-full h-full object-cover"
                   />
@@ -484,7 +485,7 @@ const Messages = () => {
                     <div className="relative w-11 h-11 rounded-full bg-gray-200 flex-shrink-0">
                       <div className="w-full h-full rounded-full overflow-hidden">
                         <img
-                          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${c.partner_username}`}
+                          src={getAvatarUrl(c.partner_avatar_url || c.partner_username)}
                           alt={c.partner_username}
                           className="w-full h-full object-cover"
                         />
@@ -544,7 +545,7 @@ const Messages = () => {
                   >
                     <div className="w-full h-full rounded-full overflow-hidden">
                       <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.username}`}
+                        src={getAvatarUrl(activePartner)}
                         alt={activePartner.username}
                         className="w-full h-full object-cover"
                       />
@@ -668,7 +669,7 @@ const Messages = () => {
                   <div className="flex items-end gap-2 my-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
                     <div className="w-7 h-7 rounded-full bg-gray-200 overflow-hidden flex-shrink-0 shadow-2xs">
                       <img
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${activePartner.username}`}
+                        src={getAvatarUrl(activePartner)}
                         alt={activePartner.username}
                         className="w-full h-full object-cover"
                       />
@@ -786,7 +787,7 @@ const Messages = () => {
                         <div className="relative w-10 h-10 rounded-full bg-gray-200 flex-shrink-0">
                           <div className="w-full h-full rounded-full overflow-hidden">
                             <img
-                              src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${u.username}`}
+                              src={getAvatarUrl(u)}
                               alt={u.username}
                               className="w-full h-full object-cover"
                             />

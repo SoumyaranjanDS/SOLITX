@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import CommentModal from './CommentModal';
+import { getAvatarUrl } from '../utils/avatar';
 
 // Helper to format timestamps like Twitter (e.g. 5m, 2h, Oct 12)
 export const formatRelativeTime = (timestamp) => {
@@ -209,7 +210,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
           className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:opacity-90 transition-opacity"
         >
           <img
-            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${post.username}`}
+            src={getAvatarUrl(post)}
             alt={post.username}
             className="w-full h-full object-cover"
           />

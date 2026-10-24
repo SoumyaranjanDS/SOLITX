@@ -67,7 +67,7 @@ export const registerUser = async (req, res, next) => {
     const insertUserQuery = `
       INSERT INTO users (username, email, password_hash)
       VALUES ($1, $2, $3)
-      RETURNING id, username, email, bio, created_at
+      RETURNING id, username, email, name, bio, avatar_url, banner_url, created_at
     `;
     const newUser = await pool.query(insertUserQuery, [
       username,
