@@ -5,12 +5,14 @@ import {
   X, 
   RefreshCw, 
   AlertCircle,
-  Dice5,
+  Camera,
+  Upload,
   Sparkles
 } from 'lucide-react';
 import { SolitxLogo } from './AppShell';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 
 // Comprehensive mainstream categories matching Twitter / X explore topics
 const INTEREST_CATEGORIES = [
@@ -95,12 +97,10 @@ const INTEREST_CATEGORIES = [
   },
 ];
 
-const AVATAR_STYLES = ['avataaars', 'bottts', 'identicon', 'personas'];
-
 const OnboardingModal = ({ isOpen, onComplete }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
-  const [step, setStep] = useState(1); // 1: Unique Username, 2: Universal Interests, 3: Who to Follow, 4: Avatar & Bio
+  const [step, setStep] = useState(1); // 1: Unique Username, 2: Universal Interests, 3: Who to Follow, 4: Profile Photo & Bio
 
   // ── Step 1: Unique Username State ──
   const [usernameInput, setUsernameInput] = useState(currentUser?.username || '');
@@ -119,11 +119,14 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [followedUsernames, setFollowedUsernames] = useState(new Set());
 
-  // ── Step 4: Avatar & Bio State ──
-  const [avatarSeed, setAvatarSeed] = useState(currentUser?.username || 'solitx_user');
-  const [avatarStyle, setAvatarStyle] = useState('avataaars');
+  // ── Step 4: Profile Photo & Bio State ──
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url || '');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
+  const [avatarUploadError, setAvatarUploadError] = useState('');
   const [bioInput, setBioInput] = useState(currentUser?.bio || '');
   const [isFinishing, setIsFinishing] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Generate clean Twitter-style username alternatives when taken
   const generateSuggestions = (base) => {
@@ -140,7 +143,9 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
         const freshUser = JSON.parse(localStorage.getItem('user') || '{}');
         if (freshUser?.username && (!usernameInput || usernameInput === 'solitx_user')) {
           setUsernameInput(freshUser.username);
-          setAvatarSeed(freshUser.username);
+        }
+        if (freshUser?.avatar_url && !avatarUrl) {
+          setAvatarUrl(freshUser.avatar_url);
         }
       } catch (e) {
         // ignore
@@ -245,10 +250,27 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
     }
   };
 
-  // Shuffle Avatar Seed
-  const handleShuffleAvatar = () => {
-    const randomSeed = Math.random().toString(36).substring(2, 8);
-    setAvatarSeed(randomSeed);
+  // Direct Profile Photo Upload for Onboarding
+  const handleAvatarUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingAvatar(true);
+      setAvatarUploadProgress(0);
+      setAvatarUploadError('');
+
+      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
+        setAvatarUploadProgress(percent);
+      });
+
+      setAvatarUrl(publicUrl);
+    } catch (err) {
+      setAvatarUploadError(err.message || 'Failed to upload profile photo');
+    } finally {
+      setIsUploadingAvatar(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   // Finish Onboarding & Save
@@ -261,14 +283,17 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
 
       const payload = {
         bio: bioInput.trim(),
+        avatar_url: avatarUrl ? avatarUrl.trim() : undefined,
         newUsername: cleanUsername && cleanUsername !== currentParamUsername ? cleanUsername : undefined,
       };
 
       if (currentParamUsername) {
         const res = await api.put(`/users/${currentParamUsername}`, payload);
         if (res.data?.data?.user) {
-          localStorage.setItem('user', JSON.stringify(res.data.data.user));
+          const updatedUser = res.data.data.user;
+          localStorage.setItem('user', JSON.stringify(updatedUser));
           window.dispatchEvent(new Event('storage'));
+          window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser }));
         }
       }
     } catch (err) {
@@ -557,42 +582,97 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
             </div>
           )}
 
-          {/* ══════════════ STEP 4: AVATAR & BIO SETUP ══════════════ */}
+          {/* ══════════════ STEP 4: PROFILE PICTURE & BIO SETUP ══════════════ */}
           {step === 4 && (
             <div className="space-y-6">
               <div>
                 <h2 className="text-[26px] sm:text-[30px] font-black text-[#0F1419] tracking-tight leading-snug">
-                  Complete your profile
+                  Add a profile picture
                 </h2>
                 <p className="text-[15px] text-[#536471] mt-1.5 leading-relaxed">
-                  Pick an avatar and write a short bio to introduce yourself to everyone on SOLITX.
+                  Upload a photo so people recognize you on SOLITX. You can also change this anytime from your profile.
                 </p>
               </div>
 
-              {/* Avatar Selector Card */}
-              <div className="p-4 bg-[#F7F9F9] rounded-2xl border border-[#EFF3F4] flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full bg-white overflow-hidden flex-shrink-0 shadow-sm border border-[#CFD9DE]">
-                  <img
-                    src={`https://api.dicebear.com/7.x/${avatarStyle}/svg?seed=${avatarSeed}`}
-                    alt="avatar"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-extrabold text-[16px] text-[#0F1419] truncate">
-                    @{usernameInput || currentUser?.username}
+              {/* Profile Photo Uploader Card */}
+              <div className="p-6 bg-[#F7F9F9] rounded-2xl border border-[#EFF3F4] flex flex-col items-center justify-center text-center">
+                <div className="relative group/avatar cursor-pointer mb-3">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-24 h-24 rounded-full bg-white overflow-hidden shadow-md border-2 border-[#CFD9DE] relative group hover:border-[#7C3AED] transition-all"
+                  >
+                    <img
+                      src={avatarUrl ? avatarUrl : getAvatarUrl(usernameInput || currentUser?.username)}
+                      alt="avatar"
+                      className="w-full h-full object-cover"
+                    />
+
+                    {/* Hover Upload Overlay */}
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Camera size={24} />
+                      <span className="text-[10px] font-bold mt-1">Upload</span>
+                    </div>
+
+                    {/* Live Uploading Progress Overlay */}
+                    {isUploadingAvatar && (
+                      <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                        <div className="w-6 h-6 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
+                        <span className="text-[11px] font-bold">{avatarUploadProgress}%</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3 mt-1.5">
+
+                  {/* Camera Badge Icon */}
+                  {!isUploadingAvatar && (
                     <button
                       type="button"
-                      onClick={handleShuffleAvatar}
-                      className="flex items-center gap-1.5 text-[13px] font-bold text-[#0F1419] hover:underline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="absolute bottom-0 right-0 p-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full shadow-md transition-transform active:scale-95"
+                      title="Upload photo"
                     >
-                      <Dice5 size={15} />
-                      <span>Shuffle style</span>
+                      <Camera size={14} />
                     </button>
-                  </div>
+                  )}
                 </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                  className="hidden"
+                  onChange={handleAvatarUpload}
+                  disabled={isUploadingAvatar}
+                />
+
+                <div className="font-extrabold text-[16px] text-[#0F1419]">
+                  @{usernameInput || currentUser?.username}
+                </div>
+
+                <div className="flex items-center gap-2 mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploadingAvatar}
+                    className="px-4 py-1.5 text-[13px] font-bold bg-[#0F1419] hover:bg-[#272C30] text-white rounded-full transition-all shadow-sm active:scale-95"
+                  >
+                    {avatarUrl ? 'Change photo' : 'Upload photo'}
+                  </button>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarUrl('')}
+                      className="px-3 py-1.5 text-[13px] font-semibold text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                {avatarUploadError && (
+                  <p className="text-[12px] text-red-500 font-medium mt-2">
+                    {avatarUploadError}
+                  </p>
+                )}
               </div>
 
               {/* Bio Field */}

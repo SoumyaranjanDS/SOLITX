@@ -178,9 +178,11 @@ export const googleAuthCallback = async (req, res, next) => {
   try {
     const profile = req.user;
     const email = profile.emails[0].value;
+    const googleName = profile.displayName || null;
+    const googleAvatar = profile.photos?.[0]?.value || null;
 
     const findUserQuery =
-      "SELECT id, username, email, bio FROM users WHERE email = $1";
+      "SELECT id, username, email, name, bio, bio_link, avatar_url, banner_url, created_at FROM users WHERE email = $1";
     let result = await pool.query(findUserQuery, [email]);
 
     const frontendUrl =
@@ -220,14 +222,16 @@ export const googleAuthCallback = async (req, res, next) => {
       const passwordHash = await bcrypt.hash(randomPassword, salt);
 
       const insertUserQuery = `
-        INSERT INTO users (username, email, password_hash)
-        VALUES ($1, $2, $3)
-        RETURNING id, username, email, bio, created_at
+        INSERT INTO users (username, email, password_hash, name, avatar_url)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, username, email, name, bio, avatar_url, banner_url, created_at
       `;
       const newUser = await pool.query(insertUserQuery, [
         candidate,
         email,
         passwordHash,
+        googleName,
+        googleAvatar,
       ]);
       const user = newUser.rows[0];
       const token = generateToken(user.id);
@@ -305,7 +309,7 @@ export const completeGoogleRegistration = async (req, res, next) => {
     const insertUserQuery = `
       INSERT INTO users (username, email, password_hash)
       VALUES ($1, $2, $3)
-      RETURNING id, username, email, bio, created_at
+      RETURNING id, username, email, name, bio, avatar_url, banner_url, created_at
     `;
     const newUser = await pool.query(insertUserQuery, [
       username.toLowerCase(),

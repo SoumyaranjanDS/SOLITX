@@ -163,6 +163,23 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
     };
     window.addEventListener('user-updated', handleUserUpdate);
     window.addEventListener('storage', handleUserUpdate);
+
+    // Background sync fresh user profile (avatar_url, banner_url, name) from backend
+    const currentUsername = user?.username;
+    if (currentUsername) {
+      api.get(`/users/${currentUsername}`).then((res) => {
+        const fresh = res.data?.data?.user;
+        if (fresh) {
+          const stored = JSON.parse(localStorage.getItem('user') || '{}');
+          if (fresh.avatar_url !== stored.avatar_url || fresh.banner_url !== stored.banner_url || fresh.name !== stored.name) {
+            const merged = { ...stored, ...fresh };
+            localStorage.setItem('user', JSON.stringify(merged));
+            setUser(merged);
+          }
+        }
+      }).catch(() => {});
+    }
+
     return () => {
       window.removeEventListener('user-updated', handleUserUpdate);
       window.removeEventListener('storage', handleUserUpdate);

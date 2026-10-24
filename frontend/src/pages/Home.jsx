@@ -33,10 +33,22 @@ const Home = () => {
   });
 
   useEffect(() => {
-    const handleUserUpdate = () => {
+    const handleUserUpdate = (e) => {
       try {
         const stored = localStorage.getItem('user');
-        if (stored) setUser(JSON.parse(stored));
+        const parsed = e?.detail || (stored ? JSON.parse(stored) : null);
+        if (parsed) {
+          setUser(parsed);
+          if (parsed.avatar_url && parsed.username) {
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.username === parsed.username
+                  ? { ...p, author_avatar_url: parsed.avatar_url }
+                  : p
+              )
+            );
+          }
+        }
       } catch {}
     };
     window.addEventListener('user-updated', handleUserUpdate);
