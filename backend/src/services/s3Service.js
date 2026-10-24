@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import {
   S3Client,
   PutObjectCommand,
@@ -9,7 +12,7 @@ import crypto from "crypto";
 import { AppError } from "../utils/AppError.js";
 
 const region = process.env.AWS_REGION || "ap-south-1";
-const bucket = process.env.AWS_S3_BUCKET_NAME;
+const bucket = process.env.AWS_S3_BUCKET_NAME || "solitx-media-prod-soumya-842806122222-ap-south-1-an";
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
 const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 const cloudfrontDomain = process.env.CLOUDFRONT_DOMAIN;
@@ -123,13 +126,20 @@ export async function deleteS3Object(key) {
 }
 
 /**
+ * Returns the public media base URL (CloudFront CDN or direct S3 bucket origin).
+ */
+export function getMediaBaseUrl() {
+  if (cloudfrontDomain) {
+    return `https://${cloudfrontDomain.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/`;
+  }
+  return `https://${bucket}.s3.${region}.amazonaws.com/`;
+}
+
+/**
  * Constructs the public access URL (via CloudFront CDN or fallback direct S3).
  */
 export function buildPublicMediaUrl(key) {
   if (!key) return null;
-  if (cloudfrontDomain) {
-    return `https://${cloudfrontDomain.replace(/^https?:\/\//, "")}/${key}`;
-  }
-  // S3 Fallback
-  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+  return `${getMediaBaseUrl()}${key.replace(/^\/+/, "")}`;
 }
+

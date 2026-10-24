@@ -363,8 +363,8 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                 {attachedMedia && (
                   <div className="mt-2.5 space-y-2">
                     {attachedMedia.map((m) => {
-                      const displaySrc = m.url_feed || m.url_full || m.url_thumb;
-                      const fullSrc = m.url_full || m.url_feed || m.url_thumb;
+                      const displaySrc = m.url_feed || m.url_full || m.url_thumb || m.url_raw;
+                      const fullSrc = m.url_full || m.url_feed || m.url_thumb || m.url_raw;
                       if (!displaySrc) return null;
                       return (
                         <div

@@ -2,6 +2,7 @@ import pool from "../../config/db.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { AppError } from "../../utils/AppError.js";
 import { createNotification } from "../../services/notificationService.js";
+import { MEDIA_JSON_SELECT } from "../posts/post.controller.js";
 
 // GET All Communities
 export const getCommunities = async (req, res, next) => {
@@ -286,23 +287,7 @@ export const getCommunityFeed = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM comments c2 WHERE c2.post_id = p.id) as replies_count,
         ${selectLiked},
         ${selectBookmarked},
-        (
-          SELECT COALESCE(
-            json_agg(
-              json_build_object(
-                'id', m.id,
-                'url_thumb', m.url_thumb,
-                'url_feed', m.url_feed,
-                'url_full', m.url_full,
-                'width', m.width,
-                'height', m.height,
-                'status', m.status
-              ) ORDER BY m.created_at ASC
-            ), '[]'::json
-          )
-          FROM media m
-          WHERE m.post_id = p.id
-        ) as media
+        ${MEDIA_JSON_SELECT}
       FROM posts p
       JOIN users u ON p.user_id = u.id
       JOIN communities c ON p.community_id = c.id

@@ -598,8 +598,8 @@ const PostDetail = () => {
                   return (
                     <div className="my-3 space-y-3">
                       {attachedMedia.map((m) => {
-                        const displaySrc = m.url_feed || m.url_full || m.url_thumb;
-                        const fullSrc = m.url_full || m.url_feed || m.url_thumb;
+                        const displaySrc = m.url_feed || m.url_full || m.url_thumb || m.url_raw;
+                        const fullSrc = m.url_full || m.url_feed || m.url_thumb || m.url_raw;
                         if (!displaySrc) return null;
                         return (
                           <div

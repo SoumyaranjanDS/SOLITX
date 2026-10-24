@@ -2,6 +2,9 @@ import pool from "../../config/db.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { createNotification } from "../../services/notificationService.js";
+import { getMediaBaseUrl } from "../../services/s3Service.js";
+
+const mediaBaseUrl = getMediaBaseUrl();
 
 export const MEDIA_JSON_SELECT = `
   (
@@ -9,9 +12,11 @@ export const MEDIA_JSON_SELECT = `
       json_agg(
         json_build_object(
           'id', m.id,
-          'url_thumb', m.url_thumb,
-          'url_feed', m.url_feed,
-          'url_full', m.url_full,
+          'url_thumb', COALESCE(m.url_thumb, '${mediaBaseUrl}' || m.s3_key_raw),
+          'url_feed', COALESCE(m.url_feed, '${mediaBaseUrl}' || m.s3_key_raw),
+          'url_full', COALESCE(m.url_full, '${mediaBaseUrl}' || m.s3_key_raw),
+          'url_raw', '${mediaBaseUrl}' || m.s3_key_raw,
+          's3_key_raw', m.s3_key_raw,
           'width', m.width,
           'height', m.height,
           'status', m.status
@@ -97,7 +102,12 @@ export const createPost = async (req, res, next) => {
         `UPDATE media 
          SET post_id = $1, updated_at = NOW() 
          WHERE id = ANY($2::uuid[]) AND user_id = $3
-         RETURNING id, url_thumb, url_feed, url_full, width, height, status`,
+         RETURNING id, 
+           COALESCE(url_thumb, '${mediaBaseUrl}' || s3_key_raw) as url_thumb,
+           COALESCE(url_feed, '${mediaBaseUrl}' || s3_key_raw) as url_feed,
+           COALESCE(url_full, '${mediaBaseUrl}' || s3_key_raw) as url_full,
+           '${mediaBaseUrl}' || s3_key_raw as url_raw,
+           s3_key_raw, width, height, status`,
         [post.id, media_ids, userId]
       );
       attachedMedia = mediaUpdateRes.rows;

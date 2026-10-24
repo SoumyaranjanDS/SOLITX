@@ -7,6 +7,7 @@ import { errorHandler } from "./middlewares/errorHandler.js";
 import { ApiResponse } from "./utils/ApiResponse.js";
 import { AppError } from "./utils/AppError.js";
 import { initSocket } from "./services/socketService.js";
+import { startWorker } from "./worker.js";
 
 dotenv.config();
 
@@ -275,9 +276,12 @@ app.use(errorHandler);
 let serverInstance = null;
 
 connectDB().then(() => {
-  serverInstance = httpServer.listen(port, () =>
-    console.log(`Server running on port ${port} (PID: ${process.pid})`),
-  );
+  serverInstance = httpServer.listen(port, () => {
+    console.log(`Server running on port ${port} (PID: ${process.pid})`);
+    startWorker().catch((err) => {
+      console.warn("[Worker] Auto-start note:", err.message);
+    });
+  });
 });
 
 // DAY 22: GRACEFUL SHUTDOWN HANDLER (SIGTERM / SIGINT)
