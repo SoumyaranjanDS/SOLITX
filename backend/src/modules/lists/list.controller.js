@@ -254,6 +254,7 @@ export const getListFeed = async (req, res, next) => {
         p.content,
         p.category,
         p.community_id,
+        p.has_media,
         comm.name as community_name,
         comm.slug as community_slug,
         p.created_at,
@@ -266,7 +267,24 @@ export const getListFeed = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         ${selectLiked},
-        ${selectBookmarked}
+        ${selectBookmarked},
+        (
+          SELECT COALESCE(
+            json_agg(
+              json_build_object(
+                'id', m.id,
+                'url_thumb', m.url_thumb,
+                'url_feed', m.url_feed,
+                'url_full', m.url_full,
+                'width', m.width,
+                'height', m.height,
+                'status', m.status
+              ) ORDER BY m.created_at ASC
+            ), '[]'::json
+          )
+          FROM media m
+          WHERE m.post_id = p.id
+        ) as media
       FROM posts p
       JOIN users u ON p.user_id = u.id
       LEFT JOIN communities comm ON p.community_id = comm.id

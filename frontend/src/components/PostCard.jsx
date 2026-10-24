@@ -59,6 +59,9 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
   const [replyCount, setReplyCount] = useState(parseInt(post.replies_count, 10) || 0);
   const [showCommentModal, setShowCommentModal] = useState(false);
 
+  // Lightbox Modal State
+  const [lightboxImage, setLightboxImage] = useState(null);
+
   useEffect(() => {
     if (post.replies_count !== undefined) {
       setReplyCount(parseInt(post.replies_count, 10) || 0);
@@ -343,7 +346,8 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               </div>
             </div>
           ) : (() => {
-            const mediaMatch = displayContent?.match(/(https?:\/\/[^\s]+(?:\.(?:jpg|jpeg|png|gif|webp|svg|bmp)|images\.unsplash\.com[^\s]+|imgur\.com[^\s]+))/i);
+            const attachedMedia = Array.isArray(post.media) && post.media.length > 0 ? post.media : null;
+            const mediaMatch = !attachedMedia && displayContent?.match(/(https?:\/\/[^\s]+(?:\.(?:jpg|jpeg|png|gif|webp|svg|bmp)|images\.unsplash\.com[^\s]+|imgur\.com[^\s]+))/i);
             const mediaUrl = mediaMatch ? mediaMatch[0] : null;
             const cleanContent = mediaUrl ? displayContent.replace(mediaUrl, '').trim() : displayContent;
             return (
@@ -353,12 +357,54 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                     {cleanContent}
                   </p>
                 )}
-                {mediaUrl && (
-                  <div className="mt-2.5 rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[380px] bg-black/5">
+
+                {/* Structured Attached Media from S3 Pipeline */}
+                {attachedMedia && (
+                  <div className="mt-2.5 space-y-2">
+                    {attachedMedia.map((m) => {
+                      const displaySrc = m.url_feed || m.url_full || m.url_thumb;
+                      const fullSrc = m.url_full || m.url_feed || m.url_thumb;
+                      if (!displaySrc) return null;
+                      return (
+                        <div
+                          key={m.id || displaySrc}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLightboxImage(fullSrc);
+                          }}
+                          className="rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[420px] bg-black/5 relative group/img cursor-zoom-in"
+                        >
+                          <img
+                            src={displaySrc}
+                            alt="Post attachment"
+                            className="w-full h-full object-cover max-h-[420px] hover:opacity-95 transition-opacity"
+                            loading="lazy"
+                          />
+                          {m.status === 'processing' && (
+                            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold rounded-full">
+                              Optimizing WebP...
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Fallback Regex URL Media */}
+                {!attachedMedia && mediaUrl && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightboxImage(mediaUrl);
+                    }}
+                    className="mt-2.5 rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[380px] bg-black/5 cursor-zoom-in"
+                  >
                     <img
                       src={mediaUrl}
                       alt="Post attachment"
-                      className="w-full h-full object-cover max-h-[380px]"
+                      className="w-full h-full object-cover max-h-[380px] hover:opacity-95 transition-opacity"
+                      loading="lazy"
                       onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
                     />
                   </div>
@@ -510,6 +556,34 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
           }
         }}
       />
+
+      {/* Full-Screen Media Lightbox Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation();
+            setLightboxImage(null);
+          }}
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxImage(null);
+            }}
+            className="absolute top-5 right-5 p-2.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors active:scale-95 z-50"
+            title="Close image"
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={lightboxImage}
+            alt="Full resolution preview"
+            className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </>
   );
 };

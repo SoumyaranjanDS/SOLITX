@@ -3,6 +3,26 @@ import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { createNotification } from "../../services/notificationService.js";
 
+export const MEDIA_JSON_SELECT = `
+  (
+    SELECT COALESCE(
+      json_agg(
+        json_build_object(
+          'id', m.id,
+          'url_thumb', m.url_thumb,
+          'url_feed', m.url_feed,
+          'url_full', m.url_full,
+          'width', m.width,
+          'height', m.height,
+          'status', m.status
+        ) ORDER BY m.created_at ASC
+      ), '[]'::json
+    )
+    FROM media m
+    WHERE m.post_id = p.id
+  ) as media
+`;
+
 // ─── 1. Create Post ──────────────────────────────────────────────────────────
 export const createPost = async (req, res, next) => {
   try {
@@ -173,6 +193,7 @@ export const getFeed = async (req, res, next) => {
           p.content,
           p.category,
           p.community_id,
+          p.has_media,
           comm.name as community_name,
           comm.slug as community_slug,
           p.created_at,
@@ -185,7 +206,8 @@ export const getFeed = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked
+          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked,
+          ${MEDIA_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -198,6 +220,7 @@ export const getFeed = async (req, res, next) => {
           p.content,
           p.category,
           p.community_id,
+          p.has_media,
           comm.name as community_name,
           comm.slug as community_slug,
           p.created_at,
@@ -210,7 +233,8 @@ export const getFeed = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
-          false as has_bookmarked
+          false as has_bookmarked,
+          ${MEDIA_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -274,6 +298,7 @@ export const getFeed = async (req, res, next) => {
         p.content,
         p.category,
         p.community_id,
+        p.has_media,
         comm.name as community_name,
         comm.slug as community_slug,
         p.created_at,
@@ -286,7 +311,8 @@ export const getFeed = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         ${selectLiked},
-        ${selectBookmarked}
+        ${selectBookmarked},
+        ${MEDIA_JSON_SELECT}
       FROM posts p
       JOIN users u ON p.user_id = u.id
       LEFT JOIN communities comm ON p.community_id = comm.id
@@ -353,6 +379,7 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -377,6 +404,7 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -403,6 +431,7 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
+              ${MEDIA_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -427,6 +456,7 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
+              ${MEDIA_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -568,6 +598,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -575,11 +606,12 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
-              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND (p.has_media = true OR p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
               AND p.created_at < $3
             ORDER BY p.created_at DESC
             LIMIT $4;
@@ -592,6 +624,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -599,11 +632,12 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
-              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND (p.has_media = true OR p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
             ORDER BY p.created_at DESC
             LIMIT $3;
           `;
@@ -617,6 +651,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -624,11 +659,12 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              false as has_liked
+              false as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
-              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND (p.has_media = true OR p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
               AND p.created_at < $2
             ORDER BY p.created_at DESC
             LIMIT $3;
@@ -641,6 +677,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -648,11 +685,12 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              false as has_liked
+              false as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
-              AND (p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
+              AND (p.has_media = true OR p.content ~* '${mediaPattern}' OR p.content ILIKE '%![%](%)%')
             ORDER BY p.created_at DESC
             LIMIT $2;
           `;
@@ -669,6 +707,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -676,7 +715,8 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2 AND p.created_at < $3
@@ -691,6 +731,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -698,7 +739,8 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked
+              EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
@@ -715,6 +757,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -722,7 +765,8 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              false as has_liked
+              false as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1 AND p.created_at < $2
@@ -737,6 +781,7 @@ export const getUserPosts = async (req, res, next) => {
               p.content,
               p.created_at,
               p.updated_at,
+              p.has_media,
               COALESCE(p.views_count, 0) as views_count,
               u.id as author_id,
               u.name as author_name,
@@ -744,7 +789,8 @@ export const getUserPosts = async (req, res, next) => {
               u.bio as author_bio,
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
-              false as has_liked
+              false as has_liked,
+              ${MEDIA_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
@@ -807,6 +853,7 @@ export const getPostById = async (req, res, next) => {
           p.content,
           p.category,
           p.community_id,
+          p.has_media,
           comm.name as community_name,
           comm.slug as community_slug,
           p.created_at,
@@ -819,7 +866,8 @@ export const getPostById = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked
+          EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked,
+          ${MEDIA_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -833,6 +881,7 @@ export const getPostById = async (req, res, next) => {
           p.content,
           p.category,
           p.community_id,
+          p.has_media,
           comm.name as community_name,
           comm.slug as community_slug,
           p.created_at,
@@ -845,7 +894,8 @@ export const getPostById = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
-          false as has_bookmarked
+          false as has_bookmarked,
+          ${MEDIA_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -1314,6 +1364,7 @@ export const getBookmarks = async (req, res, next) => {
         p.content,
         p.category,
         p.community_id,
+        p.has_media,
         comm.name as community_name,
         comm.slug as community_slug,
         p.created_at,
@@ -1326,7 +1377,8 @@ export const getBookmarks = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-        true as has_bookmarked
+        true as has_bookmarked,
+        ${MEDIA_JSON_SELECT}
       FROM bookmarks b
       JOIN posts p ON b.post_id = p.id
       JOIN users u ON p.user_id = u.id

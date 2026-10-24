@@ -100,6 +100,9 @@ const PostDetail = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Lightbox Modal State
+  const [lightboxImage, setLightboxImage] = useState(null);
+
   // Edit Post State
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
@@ -583,6 +586,61 @@ const PostDetail = () => {
                   {post.content}
                 </p>
               )}
+
+              {/* Media rendering (S3 pipeline or markdown/link fallback) */}
+              {(() => {
+                const attachedMedia = Array.isArray(post.media) && post.media.length > 0 ? post.media : null;
+                const mediaMatch = !attachedMedia && post.content?.match(/(https?:\/\/[^\s]+(?:\.(?:jpg|jpeg|png|gif|webp|svg|bmp)|images\.unsplash\.com[^\s]+|imgur\.com[^\s]+))/i);
+                const mediaUrl = mediaMatch ? mediaMatch[0] : null;
+
+                if (attachedMedia) {
+                  return (
+                    <div className="my-3 space-y-3">
+                      {attachedMedia.map((m) => {
+                        const displaySrc = m.url_feed || m.url_full || m.url_thumb;
+                        const fullSrc = m.url_full || m.url_feed || m.url_thumb;
+                        if (!displaySrc) return null;
+                        return (
+                          <div
+                            key={m.id || displaySrc}
+                            onClick={() => setLightboxImage(fullSrc)}
+                            className="rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[550px] bg-black/5 cursor-zoom-in relative group/img"
+                          >
+                            <img
+                              src={displaySrc}
+                              alt="Post media"
+                              className="w-full h-full object-cover max-h-[550px] hover:opacity-95 transition-opacity"
+                            />
+                            {m.status === 'processing' && (
+                              <div className="absolute top-3 left-3 px-3 py-1 bg-black/70 backdrop-blur-md text-white text-[11px] font-bold rounded-full">
+                                Optimizing WebP...
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                if (mediaUrl) {
+                  return (
+                    <div
+                      onClick={() => setLightboxImage(mediaUrl)}
+                      className="my-3 rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[500px] bg-black/5 cursor-zoom-in"
+                    >
+                      <img
+                        src={mediaUrl}
+                        alt="Post media"
+                        className="w-full h-full object-cover max-h-[500px] hover:opacity-95 transition-opacity"
+                        onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                      />
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
 
               {/* YouTube / Twitter Style Timestamps & Views */}
               <div className="flex flex-wrap items-center gap-2 text-[14px] text-[#536471] py-2.5 border-b border-[#EFF3F4]" title={formatFullDateTime(post.created_at)}>
@@ -1099,6 +1157,28 @@ const PostDetail = () => {
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1419] text-white text-[14px] font-semibold px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
             <Check size={16} className="text-green-400" />
             <span>{toastMessage}</span>
+          </div>
+        )}
+
+        {/* ── Full-Screen Lightbox Modal ── */}
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150 cursor-pointer"
+            onClick={() => setLightboxImage(null)}
+          >
+            <button
+              onClick={() => setLightboxImage(null)}
+              className="absolute top-5 right-5 p-2.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors active:scale-95 z-50"
+              title="Close image"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={lightboxImage}
+              alt="Full resolution preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl cursor-default"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         )}
       </div>

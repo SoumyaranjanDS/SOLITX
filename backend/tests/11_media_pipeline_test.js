@@ -191,8 +191,45 @@ async function runMediaPipelineTest() {
     await pool.query(`UPDATE media SET post_id = $1 WHERE id = $2`, [createdPost.id, mediaId]);
     console.log(`✅ Post created (ID: ${createdPost.id}) and media linked successfully!`);
 
+    // Feed query verification
+    console.log('\nTesting feed query for media JSON aggregation...');
+    const feedRes = await pool.query(`
+      SELECT 
+        p.id,
+        p.content,
+        p.has_media,
+        (
+          SELECT COALESCE(
+            json_agg(
+              json_build_object(
+                'id', m.id,
+                'url_thumb', m.url_thumb,
+                'url_feed', m.url_feed,
+                'url_full', m.url_full,
+                'width', m.width,
+                'height', m.height,
+                'status', m.status
+              ) ORDER BY m.created_at ASC
+            ), '[]'::json
+          )
+          FROM media m
+          WHERE m.post_id = p.id
+        ) as media
+      FROM posts p
+      WHERE p.id = $1
+    `, [createdPost.id]);
+
+    const feedPost = feedRes.rows[0];
+    if (!feedPost || !feedPost.media || feedPost.media.length === 0) {
+      throw new Error('Feed query failed to return attached media array');
+    }
+    console.log(`✅ Feed query returned post with media array: ${feedPost.media.length} items`);
+    console.log(`   Feed variant URL: ${feedPost.media[0].url_feed}`);
+    console.log(`   Thumb variant URL: ${feedPost.media[0].url_thumb}`);
+    console.log(`   Full variant URL: ${feedPost.media[0].url_full}`);
+
     console.log('\n===============================================================');
-    console.log('🎉 100% CLEAN PASS: S3 MEDIA PIPELINE FULLY OPERATIONAL!');
+    console.log('🎉 100% CLEAN PASS: S3 MEDIA PIPELINE + UI CONTRACT OPERATIONAL!');
     console.log('===============================================================\n');
 
   } catch (err) {
