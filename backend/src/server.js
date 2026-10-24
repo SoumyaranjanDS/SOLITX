@@ -65,6 +65,7 @@ import userRoutes from "./modules/users/user.routes.js";
 import postRoutes from "./modules/posts/post.routes.js";
 import listRoutes from "./modules/lists/list.routes.js";
 import communityRoutes from "./modules/communities/community.routes.js";
+import mediaRoutes from "./modules/media/media.routes.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
 
@@ -73,6 +74,7 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/posts", postRoutes);
 app.use("/api/v1/lists", listRoutes);
 app.use("/api/v1/communities", communityRoutes);
+app.use("/api/v1/media", mediaRoutes);
 
 // TEMPORARY ENDPOINT FOR LOAD TESTING (DAY 8) & PAGINATION (DAY 10)
 app.get("/api/v1/test/feed/:user_id", async (req, res, next) => {

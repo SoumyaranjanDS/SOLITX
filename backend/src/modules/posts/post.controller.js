@@ -6,7 +6,7 @@ import { createNotification } from "../../services/notificationService.js";
 // ─── 1. Create Post ──────────────────────────────────────────────────────────
 export const createPost = async (req, res, next) => {
   try {
-    const { content, category: reqCategory, community_id } = req.body;
+    const { content, category: reqCategory, community_id, media_ids } = req.body;
     const userId = req.user.id;
 
     if (!content || typeof content !== "string" || content.trim().length === 0) {
@@ -61,13 +61,27 @@ export const createPost = async (req, res, next) => {
       }
     }
 
+    const hasMedia = Array.isArray(media_ids) && media_ids.length > 0;
     const insertQuery = `
-      INSERT INTO posts (user_id, content, views_count, category, community_id)
-      VALUES ($1, $2, 1, $3, $4)
-      RETURNING id, user_id, content, category, community_id, views_count, created_at, updated_at;
+      INSERT INTO posts (user_id, content, views_count, category, community_id, has_media)
+      VALUES ($1, $2, 1, $3, $4, $5)
+      RETURNING id, user_id, content, category, community_id, views_count, has_media, created_at, updated_at;
     `;
-    const result = await pool.query(insertQuery, [userId, content.trim(), category, validCommunityId]);
+    const result = await pool.query(insertQuery, [userId, content.trim(), category, validCommunityId, hasMedia]);
     const post = result.rows[0];
+
+    // Link uploaded media records to this post
+    let attachedMedia = [];
+    if (hasMedia) {
+      const mediaUpdateRes = await pool.query(
+        `UPDATE media 
+         SET post_id = $1, updated_at = NOW() 
+         WHERE id = ANY($2::uuid[]) AND user_id = $3
+         RETURNING id, url_thumb, url_feed, url_full, width, height, status`,
+        [post.id, media_ids, userId]
+      );
+      attachedMedia = mediaUpdateRes.rows;
+    }
 
     // Fetch author info to return complete post object for immediate UI render
     const userQuery = `SELECT id, name, username, bio FROM users WHERE id = $1;`;
@@ -88,6 +102,7 @@ export const createPost = async (req, res, next) => {
       views_count: 1,
       has_liked: false,
       has_bookmarked: false,
+      media: attachedMedia,
     };
 
     return res

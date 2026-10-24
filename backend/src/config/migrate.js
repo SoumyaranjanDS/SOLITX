@@ -232,6 +232,37 @@ const runMigrations = async () => {
       CREATE INDEX IF NOT EXISTS idx_posts_community_id ON posts (community_id);
     `);
     console.log("'posts.community_id' column and index verified successfully!");
+
+    // Media Pipeline Table & Indexes
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS media (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        post_id UUID REFERENCES posts(id) ON DELETE SET NULL,
+        s3_key_raw VARCHAR(500) NOT NULL,
+        s3_key_thumb VARCHAR(500),
+        s3_key_feed VARCHAR(500),
+        s3_key_full VARCHAR(500),
+        url_thumb TEXT,
+        url_feed TEXT,
+        url_full TEXT,
+        mime_type VARCHAR(100) NOT NULL,
+        file_size_bytes BIGINT,
+        width INTEGER,
+        height INTEGER,
+        status VARCHAR(50) DEFAULT 'pending',
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_media_user_id ON media (user_id);
+      CREATE INDEX IF NOT EXISTS idx_media_post_id ON media (post_id);
+      CREATE INDEX IF NOT EXISTS idx_media_status ON media (status);
+
+      ALTER TABLE posts ADD COLUMN IF NOT EXISTS has_media BOOLEAN DEFAULT FALSE;
+      CREATE INDEX IF NOT EXISTS idx_posts_has_media ON posts (has_media);
+    `);
+    console.log("'media' table and 'posts.has_media' column verified successfully!");
   } catch (error) {
     console.error("Migration failed:", error.message);
   } finally {

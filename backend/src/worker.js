@@ -26,13 +26,93 @@ import {
 } from "./queue/jobQueue.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
+import sharp from "sharp";
+import { getS3Buffer, putS3Object, buildPublicMediaUrl } from "./services/s3Service.js";
 
-const ACTIVE_QUEUES = ["notifications", "feed_fanout"];
+const ACTIVE_QUEUES = ["notifications", "feed_fanout", "media_processing"];
 let isRunning = true;
 let activeJobsCount = 0;
 
 // Registry of job handlers
 const HANDLERS = {
+  media_processing: async (job) => {
+    const { mediaId, userId, s3KeyRaw } = job.data;
+    if (!mediaId || !s3KeyRaw) return;
+
+    console.log(`[Worker] 🖼️ Optimizing media ${mediaId} from S3 (${s3KeyRaw})...`);
+
+    // 1. Download raw image from S3
+    const rawBuffer = await getS3Buffer(s3KeyRaw);
+
+    // 2. Validate metadata / dimensions (Decompression Bomb Protection)
+    const image = sharp(rawBuffer);
+    const metadata = await image.metadata();
+
+    const maxPixels = 25_000_000; // 25 Megapixels
+    if ((metadata.width || 0) * (metadata.height || 0) > maxPixels) {
+      await pool.query(
+        `UPDATE media SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
+        ['Image dimensions exceed safety limit (25 Megapixels).', mediaId]
+      );
+      throw new Error(`Decompression bomb rejected: ${metadata.width}x${metadata.height} exceeds limit.`);
+    }
+
+    // 3. Generate 3 responsive WebP variants with stripped EXIF
+    const baseKey = `optimized/${userId}/${mediaId}`;
+    const keyThumb = `${baseKey}_thumb.webp`;
+    const keyFeed = `${baseKey}_feed.webp`;
+    const keyFull = `${baseKey}_full.webp`;
+
+    // A. Thumbnail (150x150 square crop)
+    const thumbBuf = await sharp(rawBuffer)
+      .rotate()
+      .resize(150, 150, { fit: 'cover', position: 'center' })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    // B. Feed Timeline (600px width max)
+    const feedBuf = await sharp(rawBuffer)
+      .rotate()
+      .resize({ width: 600, withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+
+    // C. Full / Lightbox (1200px width max)
+    const fullBuf = await sharp(rawBuffer)
+      .rotate()
+      .resize({ width: 1200, withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+
+    // 4. Upload all 3 variants to S3 concurrently
+    await Promise.all([
+      putS3Object({ key: keyThumb, body: thumbBuf, contentType: 'image/webp' }),
+      putS3Object({ key: keyFeed, body: feedBuf, contentType: 'image/webp' }),
+      putS3Object({ key: keyFull, body: fullBuf, contentType: 'image/webp' }),
+    ]);
+
+    // 5. Construct public URLs (CloudFront CDN or fallback S3)
+    const urlThumb = buildPublicMediaUrl(keyThumb);
+    const urlFeed = buildPublicMediaUrl(keyFeed);
+    const urlFull = buildPublicMediaUrl(keyFull);
+
+    // 6. Update PostgreSQL media record to 'ready'
+    await pool.query(
+      `UPDATE media 
+       SET s3_key_thumb = $1, s3_key_feed = $2, s3_key_full = $3,
+           url_thumb = $4, url_feed = $5, url_full = $6,
+           width = $7, height = $8, status = 'ready', updated_at = NOW()
+       WHERE id = $9`,
+      [
+        keyThumb, keyFeed, keyFull,
+        urlThumb, urlFeed, urlFull,
+        metadata.width, metadata.height,
+        mediaId
+      ]
+    );
+
+    console.log(`[Worker] ✅ Media ${mediaId} optimized & published to CDN!`);
+  },
   notifications: async (job) => {
     const { recipientId, actorId, type, postId, commentId, messageContent } = job.data;
     if (!recipientId || !actorId || recipientId === actorId) return;
