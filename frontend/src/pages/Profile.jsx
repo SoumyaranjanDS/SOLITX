@@ -17,7 +17,9 @@ import {
   FileText,
   Trash2,
   Camera,
-  Loader2
+  Loader2,
+  ZoomIn,
+  ExternalLink
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard, { formatRelativeTime } from '../components/PostCard';
@@ -173,6 +175,9 @@ const Profile = () => {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
 
+  // Full-Screen Avatar / Banner Viewer Lightbox State
+  const [mediaViewer, setMediaViewer] = useState(null); // { src, title, type: 'avatar' | 'banner' }
+
   // Modal Upload States (Inside Edit Modal)
   const [modalBannerUploading, setModalBannerUploading] = useState(false);
   const [modalBannerProgress, setModalBannerProgress] = useState(0);
@@ -198,6 +203,17 @@ const Profile = () => {
     setShowToast(true);
     setTimeout(() => setShowToast(false), 2500);
   };
+
+  // Close media viewer on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && mediaViewer) {
+        setMediaViewer(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [mediaViewer]);
 
   // Fetch Profile Info
   const fetchProfile = async () => {
@@ -614,13 +630,34 @@ const Profile = () => {
         </div>
 
         {/* Cover Photo Banner */}
-        <div className="h-[140px] sm:h-[200px] w-full relative bg-gradient-to-r from-gray-900 via-[#1E2329] to-black overflow-hidden group/banner">
+        <div 
+          onClick={() => {
+            if (user?.banner_url) {
+              setMediaViewer({
+                src: user.banner_url,
+                title: user?.name || user?.username,
+                type: 'banner'
+              });
+            }
+          }}
+          className={`h-[140px] sm:h-[200px] w-full relative bg-gradient-to-r from-gray-900 via-[#1E2329] to-black overflow-hidden group/banner ${
+            user?.banner_url ? 'cursor-pointer' : ''
+          }`}
+          title={user?.banner_url ? "Click to view full banner" : ""}
+        >
           {user?.banner_url ? (
-            <img
-              src={user.banner_url}
-              alt="Banner"
-              className="w-full h-full object-cover"
-            />
+            <>
+              <img
+                src={user.banner_url}
+                alt="Banner"
+                className="w-full h-full object-cover group-hover/banner:opacity-95 transition-opacity"
+              />
+              <div className="absolute inset-0 bg-black/25 opacity-0 group-hover/banner:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                <span className="px-3 py-1.5 bg-black/70 backdrop-blur-md text-white text-[12px] font-semibold rounded-full flex items-center gap-1.5 shadow-md">
+                  <ZoomIn size={14} /> View banner
+                </span>
+              </div>
+            </>
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-violet-950 via-slate-900 to-indigo-950" />
           )}
@@ -628,7 +665,8 @@ const Profile = () => {
           {/* Direct Banner Upload for Own Profile */}
           {isOwnProfile && (
             <label
-              className="absolute top-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 opacity-90 hover:opacity-100 group-hover/banner:opacity-100 border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute top-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 opacity-90 hover:opacity-100 group-hover/banner:opacity-100 border border-white/10 z-10"
               title="Change banner image"
             >
               <Camera size={15} />
@@ -664,17 +702,39 @@ const Profile = () => {
               <img
                 src={getAvatarUrl(user)}
                 alt={user?.username || 'Avatar'}
-                className="w-full h-full object-cover bg-white"
+                onClick={() => {
+                  setMediaViewer({
+                    src: user?.avatar_url || getAvatarUrl(user),
+                    title: user?.name || user?.username,
+                    type: 'avatar'
+                  });
+                }}
+                className="w-full h-full object-cover bg-white cursor-pointer hover:opacity-95 transition-opacity"
               />
+
+              {/* View Overlay on Hover */}
+              <div 
+                onClick={() => {
+                  setMediaViewer({
+                    src: user?.avatar_url || getAvatarUrl(user),
+                    title: user?.name || user?.username,
+                    type: 'avatar'
+                  });
+                }}
+                className="absolute inset-0 bg-black/35 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+              >
+                <ZoomIn size={20} className="drop-shadow-md" />
+                <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">View</span>
+              </div>
 
               {/* Direct Avatar Upload for Own Profile */}
               {isOwnProfile && (
                 <label
-                  className="absolute inset-0 bg-black/45 hover:bg-black/65 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 p-1.5 sm:p-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-transform z-20"
                   title="Change profile picture"
                 >
-                  <Camera size={22} className="drop-shadow-md" />
-                  <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">Edit</span>
+                  <Camera size={14} className="sm:w-4 sm:h-4" />
                   <input
                     type="file"
                     accept="image/*"
@@ -687,7 +747,7 @@ const Profile = () => {
 
               {/* Avatar Uploading Overlay */}
               {isUploadingAvatar && (
-                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-30">
                   <div className="w-6 h-6 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
                   <span className="text-[10px] font-bold">{avatarUploadProgress}%</span>
                 </div>
@@ -1342,6 +1402,80 @@ const Profile = () => {
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1419] text-white text-[14px] font-semibold px-5 py-2.5 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Check size={16} className="text-green-400" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Full-Screen Lightbox Media Viewer for Profile Picture & Banner */}
+      {mediaViewer && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex flex-col justify-between animate-in fade-in duration-200"
+          onClick={() => setMediaViewer(null)}
+        >
+          {/* Top Bar */}
+          <div
+            className="flex items-center justify-between p-4 sm:p-6 text-white z-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMediaViewer(null)}
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+                title="Close viewer (Esc)"
+              >
+                <X size={20} />
+              </button>
+              <div>
+                <h3 className="font-bold text-[16px] text-white leading-tight">
+                  {mediaViewer.title}
+                </h3>
+                <p className="text-[12px] text-gray-400 capitalize">
+                  {mediaViewer.type === 'avatar' ? 'Profile picture' : 'Header banner'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href={mediaViewer.src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold transition-colors border border-white/10"
+                title="Open high-res image"
+              >
+                <ExternalLink size={15} />
+                <span className="hidden sm:inline">Open original</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Centered Image Container */}
+          <div
+            className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+            onClick={() => setMediaViewer(null)}
+          >
+            <div
+              className="relative max-w-full max-h-[85vh] flex items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={mediaViewer.src}
+                alt={mediaViewer.title}
+                className={`max-w-full max-h-[80vh] object-contain shadow-2xl transition-transform duration-200 select-none ${
+                  mediaViewer.type === 'avatar'
+                    ? 'rounded-full border-4 border-white/20 aspect-square max-w-[min(80vw,480px)]'
+                    : 'rounded-2xl border border-white/20 aspect-[3/1] max-w-[min(95vw,1000px)] w-full'
+                }`}
+              />
+            </div>
+          </div>
+
+          {/* Bottom Bar Info / Tips */}
+          <div className="p-4 text-center text-[12px] text-gray-400">
+            Click anywhere outside or press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-gray-300">Esc</kbd> to close
+          </div>
         </div>
       )}
     </AppShell>
