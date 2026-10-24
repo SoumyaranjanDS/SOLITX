@@ -18,8 +18,7 @@ import {
   Trash2,
   Camera,
   Loader2,
-  ZoomIn,
-  ExternalLink
+  ZoomIn
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard, { formatRelativeTime } from '../components/PostCard';
@@ -1435,19 +1434,6 @@ const Profile = () => {
                   {mediaViewer.type === 'avatar' ? 'Profile picture' : 'Header banner'}
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <a
-                href={mediaViewer.src}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-[13px] font-semibold transition-colors border border-white/10"
-                title="Open high-res image"
-              >
-                <ExternalLink size={15} />
-                <span className="hidden sm:inline">Open original</span>
-              </a>
             </div>
           </div>
 
