@@ -225,10 +225,14 @@ async function startWorker() {
   console.log(`Timestamp:      ${new Date().toISOString()}\n`);
 
   for (const q of ACTIVE_QUEUES) {
-    const len = await getQueueLength(q);
-    const proc = await getProcessingCount(q);
-    const dlq = await getDeadLetterCount(q);
-    console.log(`Queue [${q}] -> Pending: ${len} | In-Flight: ${proc} | DLQ: ${dlq}`);
+    try {
+      const len = await getQueueLength(q);
+      const proc = await getProcessingCount(q);
+      const dlq = await getDeadLetterCount(q);
+      console.log(`Queue [${q}] -> Pending: ${len} | In-Flight: ${proc} | DLQ: ${dlq}`);
+    } catch (e) {
+      console.warn(`Queue [${q}] -> Pending check skipped (${e.message})`);
+    }
     processQueue(q);
   }
 

@@ -7,8 +7,13 @@ const isTls = redisUrl.startsWith('rediss://');
 
 const redis = new Redis(redisUrl, {
   ...(isTls ? { tls: { rejectUnauthorized: false } } : {}),
-  maxRetriesPerRequest: 3,
-  connectTimeout: 5000,
+  maxRetriesPerRequest: 1, // Fail fast: do not retry 20 times per command
+  connectTimeout: 2000,    // 2s connection timeout limit
+  enableOfflineQueue: false, // CRITICAL: Never hold HTTP requests in memory if Redis is down! Fail fast to DB fallback
+  lazyConnect: false,
+  retryStrategy(times) {
+    return Math.min(times * 500, 3000);
+  },
 });
 
 redis.on('connect', () => {
@@ -16,7 +21,7 @@ redis.on('connect', () => {
 });
 
 redis.on('error', (err) => {
-  console.error('Redis connection error:', err.message);
+  console.warn('[Redis] Connection notice:', err.message);
 });
 
 export default redis;
