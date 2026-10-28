@@ -8,6 +8,7 @@ export const authLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.call(...args),
   }),
+  passOnStoreError: true,
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // Limit each IP to 5 requests per `window` (here, per 15 minutes)
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
@@ -26,6 +27,7 @@ export const apiLimiter = rateLimit({
   store: new RedisStore({
     sendCommand: (...args) => redisClient.call(...args),
   }),
+  passOnStoreError: true,
   windowMs: 15 * 60 * 1000,
   max: 100,
   standardHeaders: true,

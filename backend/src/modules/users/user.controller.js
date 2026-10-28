@@ -11,12 +11,16 @@ export const getUserProfile = async (req, res, next) => {
     const { username } = req.params;
     const cacheKey = `user:${username}`;
 
-    // 1. Check Redis Cache
-    const cachedUser = await redis.get(cacheKey);
-    if (cachedUser) {
-      return res.status(200).json(
-        new ApiResponse(200, { source: "cache", user: JSON.parse(cachedUser) }, "Profile fetched from Cache")
-      );
+    // 1. Check Redis Cache (fail-safe)
+    try {
+      const cachedUser = await redis.get(cacheKey);
+      if (cachedUser) {
+        return res.status(200).json(
+          new ApiResponse(200, { source: "cache", user: JSON.parse(cachedUser) }, "Profile fetched from Cache")
+        );
+      }
+    } catch (cacheErr) {
+      // If Redis times out or is down, gracefully fallback to DB
     }
 
     // 2. Query PostgreSQL with followers counts and is_following check
@@ -110,8 +114,10 @@ export const updateUserProfile = async (req, res, next) => {
       markUsernameSet = true;
     }
 
-    // Invalidate old cache
-    await redis.del(`user:${paramUsername}`);
+    // Invalidate old cache (fail-safe)
+    try {
+      await redis.del(`user:${paramUsername}`);
+    } catch (e) {}
 
     // Update DB
     const updateQuery = `
@@ -143,9 +149,11 @@ export const updateUserProfile = async (req, res, next) => {
       throw new AppError(404, "User not found");
     }
 
-    // Invalidate new cache if changed
+    // Invalidate new cache if changed (fail-safe)
     if (targetUsername !== paramUsername) {
-      await redis.del(`user:${targetUsername}`);
+      try {
+        await redis.del(`user:${targetUsername}`);
+      } catch (e) {}
     }
 
     return res.status(200).json(
@@ -193,8 +201,10 @@ export const toggleFollow = async (req, res, next) => {
       });
     }
 
-    // Invalidate Redis cache for user
-    await redis.del(`user:${username}`);
+    // Invalidate Redis cache for user (fail-safe)
+    try {
+      await redis.del(`user:${username}`);
+    } catch (e) {}
 
     const countResult = await pool.query(
       "SELECT COUNT(*)::int as count FROM follows WHERE following_id = $1",
