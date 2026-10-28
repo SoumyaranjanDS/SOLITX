@@ -260,11 +260,11 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
       setAvatarUploadProgress(0);
       setAvatarUploadError('');
 
-      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
+      const { publicUrl, urlFeed } = await uploadMediaDirectToS3(file, (percent) => {
         setAvatarUploadProgress(percent);
-      });
+      }, { entityType: 'avatar' });
 
-      setAvatarUrl(publicUrl);
+      setAvatarUrl(urlFeed || publicUrl);
     } catch (err) {
       setAvatarUploadError(err.message || 'Failed to upload profile photo');
     } finally {

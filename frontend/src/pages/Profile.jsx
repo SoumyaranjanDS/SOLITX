@@ -401,20 +401,21 @@ const Profile = () => {
       setIsUploadingBanner(true);
       setBannerUploadProgress(0);
 
-      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
+      const { publicUrl, urlFull, urlFeed } = await uploadMediaDirectToS3(file, (percent) => {
         setBannerUploadProgress(percent);
-      });
+      }, { entityType: 'banner' });
+      const targetUrl = urlFull || urlFeed || publicUrl;
 
       // Persist to backend immediately
-      const res = await api.put(`/users/${username}`, { banner_url: publicUrl });
+      const res = await api.put(`/users/${username}`, { banner_url: targetUrl });
       const updatedUser = res.data?.data?.user;
 
-      setUser(prev => ({ ...prev, banner_url: publicUrl }));
-      setEditBannerUrl(publicUrl);
+      setUser(prev => ({ ...prev, banner_url: targetUrl }));
+      setEditBannerUrl(targetUrl);
 
       // Update localStorage & trigger event
       const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      const updatedStored = { ...stored, banner_url: publicUrl };
+      const updatedStored = { ...stored, banner_url: targetUrl };
       localStorage.setItem('user', JSON.stringify(updatedStored));
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
@@ -451,20 +452,21 @@ const Profile = () => {
         setIsUploadingAvatar(true);
         setAvatarUploadProgress(0);
 
-        const { publicUrl } = await uploadMediaDirectToS3(croppedFile, (percent) => {
+        const { publicUrl, urlFeed, urlThumb } = await uploadMediaDirectToS3(croppedFile, (percent) => {
           setAvatarUploadProgress(percent);
-        });
+        }, { entityType: 'avatar' });
+        const targetUrl = urlFeed || urlThumb || publicUrl;
 
         // Persist to backend immediately
-        const res = await api.put(`/users/${username}`, { avatar_url: publicUrl });
+        const res = await api.put(`/users/${username}`, { avatar_url: targetUrl });
         const updatedUser = res.data?.data?.user;
 
-        setUser(prev => ({ ...prev, avatar_url: publicUrl }));
-        setEditAvatarUrl(publicUrl);
+        setUser(prev => ({ ...prev, avatar_url: targetUrl }));
+        setEditAvatarUrl(targetUrl);
 
         // Update localStorage & trigger event
         const stored = JSON.parse(localStorage.getItem('user') || '{}');
-        const updatedStored = { ...stored, avatar_url: publicUrl };
+        const updatedStored = { ...stored, avatar_url: targetUrl };
         localStorage.setItem('user', JSON.stringify(updatedStored));
         window.dispatchEvent(new Event('storage'));
         window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
@@ -485,11 +487,12 @@ const Profile = () => {
         setModalAvatarUploading(true);
         setModalAvatarProgress(0);
 
-        const { publicUrl } = await uploadMediaDirectToS3(croppedFile, (pct) => {
+        const { publicUrl, urlFeed, urlThumb } = await uploadMediaDirectToS3(croppedFile, (pct) => {
           setModalAvatarProgress(pct);
-        });
+        }, { entityType: 'avatar' });
+        const targetUrl = urlFeed || urlThumb || publicUrl;
 
-        setEditAvatarUrl(publicUrl);
+        setEditAvatarUrl(targetUrl);
         setCropModalOpen(false);
         setImageToCropSrc(null);
       } catch (err) {
@@ -560,8 +563,9 @@ const Profile = () => {
       try {
         setModalBannerUploading(true);
         setModalBannerProgress(0);
-        const { publicUrl } = await uploadMediaDirectToS3(file, (pct) => setModalBannerProgress(pct));
-        setEditBannerUrl(publicUrl);
+        const { publicUrl, urlFull, urlFeed } = await uploadMediaDirectToS3(file, (pct) => setModalBannerProgress(pct), { entityType: 'banner' });
+        const targetUrl = urlFull || urlFeed || publicUrl;
+        setEditBannerUrl(targetUrl);
       } catch (err) {
         setEditError(err.message || 'Failed to upload banner');
       } finally {
@@ -1639,7 +1643,7 @@ const Profile = () => {
 
           {/* Bottom Bar Info / Tips */}
           <div className="p-4 text-center text-[12px] text-gray-400">
-            Click anywhere outside or press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-gray-300">Esc</kbd> to close
+            Click anywhere outside to close
           </div>
         </div>
       )}

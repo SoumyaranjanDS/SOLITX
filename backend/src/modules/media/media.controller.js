@@ -3,6 +3,7 @@ import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { generatePresignedUploadUrl, buildPublicMediaUrl } from "../../services/s3Service.js";
 import { enqueueJob } from "../../queue/jobQueue.js";
+import { HANDLERS } from "../../worker.js";
 
 /**
  * 1. Request Presigned Upload URL
@@ -63,7 +64,7 @@ export const requestUploadUrl = async (req, res, next) => {
  */
 export const confirmUpload = async (req, res, next) => {
   try {
-    const { media_id } = req.body;
+    const { media_id, entity_type } = req.body;
     const userId = req.user.id;
 
     if (!media_id) {
@@ -82,6 +83,15 @@ export const confirmUpload = async (req, res, next) => {
 
     const media = mediaRes.rows[0];
 
+    // Compute deterministic optimized WebP CDN URLs
+    const baseKey = `optimized/${userId}/${media.id}`;
+    const keyThumb = `${baseKey}_thumb.webp`;
+    const keyFeed = `${baseKey}_feed.webp`;
+    const keyFull = `${baseKey}_full.webp`;
+    const urlThumb = buildPublicMediaUrl(keyThumb);
+    const urlFeed = buildPublicMediaUrl(keyFeed);
+    const urlFull = buildPublicMediaUrl(keyFull);
+
     // Transition status to processing
     await pool.query(
       `UPDATE media SET status = 'processing', updated_at = NOW() WHERE id = $1`,
@@ -90,34 +100,65 @@ export const confirmUpload = async (req, res, next) => {
 
     // Enqueue to background worker for Sharp image optimization & WebP generation
     let jobId = null;
+    let isProcessedInline = false;
     try {
       jobId = await enqueueJob("media_processing", {
         mediaId: media.id,
         userId: media.user_id,
         s3KeyRaw: media.s3_key_raw,
         mimeType: media.mime_type,
+        entityType: entity_type || null,
         idempotency_key: `media:process:${media.id}`,
       });
     } catch (queueErr) {
       console.warn(
-        `[MediaConfirm] Redis queue unavailable (${queueErr.message}). Media ${media_id} will be served directly from S3/CloudFront.`
+        `[MediaConfirm] Redis queue unavailable (${queueErr.message}). Executing Sharp worker synchronously inline...`
       );
-      // Mark as ready so it is immediately visible using raw S3/CloudFront fallback
-      await pool.query(
-        `UPDATE media SET status = 'ready', updated_at = NOW() WHERE id = $1`,
-        [media_id]
-      );
+      try {
+        if (HANDLERS?.media_processing) {
+          await HANDLERS.media_processing({
+            data: {
+              mediaId: media.id,
+              userId: media.user_id,
+              s3KeyRaw: media.s3_key_raw,
+              mimeType: media.mime_type,
+              entityType: entity_type || null,
+            },
+          });
+          isProcessedInline = true;
+          jobId = `inline_${Date.now()}`;
+        }
+      } catch (inlineErr) {
+        console.error(`[MediaConfirm] Inline processing failed:`, inlineErr.message);
+        await pool.query(
+          `UPDATE media SET status = 'ready', updated_at = NOW() WHERE id = $1`,
+          [media_id]
+        );
+      }
     }
 
-    const publicUrl = buildPublicMediaUrl(media.s3_key_raw);
+    // Check if worker already finished
+    const freshMediaRes = await pool.query(
+      `SELECT status, url_thumb, url_feed, url_full FROM media WHERE id = $1`,
+      [media_id]
+    );
+    const freshMedia = freshMediaRes.rows[0];
+    const isReady = freshMedia?.status === 'ready' || isProcessedInline;
+
+    const resolvedUrlFeed = freshMedia?.url_feed || urlFeed;
+    const resolvedUrlThumb = freshMedia?.url_thumb || urlThumb;
+    const resolvedUrlFull = freshMedia?.url_full || urlFull;
 
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           media_id: media.id,
-          public_url: publicUrl,
-          status: jobId ? "processing" : "ready",
+          public_url: resolvedUrlFeed,
+          url_thumb: resolvedUrlThumb,
+          url_feed: resolvedUrlFeed,
+          url_full: resolvedUrlFull,
+          status: isReady ? "ready" : (jobId ? "processing" : "ready"),
           job_id: jobId,
         },
         jobId

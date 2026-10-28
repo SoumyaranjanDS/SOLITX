@@ -70,6 +70,39 @@ export const getUserProfile = async (req, res, next) => {
 
     const user = result.rows[0];
 
+    // Auto-remediate any legacy /raw/ URLs on read
+    if (user.avatar_url && user.avatar_url.includes('/raw/')) {
+      const rawPart = user.avatar_url.split('/raw/')[1];
+      if (rawPart) {
+        try {
+          const m = await pool.query(
+            `SELECT url_feed FROM media WHERE s3_key_raw = $1 AND status = 'ready'`,
+            ['raw/' + rawPart]
+          );
+          if (m.rowCount > 0 && m.rows[0].url_feed) {
+            user.avatar_url = m.rows[0].url_feed;
+            pool.query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [m.rows[0].url_feed, user.id]).catch(() => {});
+          }
+        } catch {}
+      }
+    }
+    if (user.banner_url && user.banner_url.includes('/raw/')) {
+      const rawPart = user.banner_url.split('/raw/')[1];
+      if (rawPart) {
+        try {
+          const m = await pool.query(
+            `SELECT url_full, url_feed FROM media WHERE s3_key_raw = $1 AND status = 'ready'`,
+            ['raw/' + rawPart]
+          );
+          if (m.rowCount > 0 && (m.rows[0].url_full || m.rows[0].url_feed)) {
+            const optUrl = m.rows[0].url_full || m.rows[0].url_feed;
+            user.banner_url = optUrl;
+            pool.query(`UPDATE users SET banner_url = $1 WHERE id = $2`, [optUrl, user.id]).catch(() => {});
+          }
+        } catch {}
+      }
+    }
+
     return res
       .status(200)
       .json(
@@ -150,12 +183,40 @@ export const updateUserProfile = async (req, res, next) => {
     let targetAvatar = userCheck.rows[0].avatar_url;
     if (avatar_url !== undefined) {
       targetAvatar = avatar_url && typeof avatar_url === 'string' && avatar_url.trim() ? avatar_url.trim() : null;
+      if (targetAvatar && targetAvatar.includes('/raw/')) {
+        const rawPart = targetAvatar.split('/raw/')[1];
+        if (rawPart) {
+          try {
+            const m = await pool.query(
+              `SELECT url_feed, url_thumb FROM media WHERE s3_key_raw = $1 AND status = 'ready'`,
+              ['raw/' + rawPart]
+            );
+            if (m.rowCount > 0 && m.rows[0].url_feed) {
+              targetAvatar = m.rows[0].url_feed;
+            }
+          } catch {}
+        }
+      }
     }
 
     // Determine target banner_url (support removing image -> null for default gradient)
     let targetBanner = userCheck.rows[0].banner_url;
     if (banner_url !== undefined) {
       targetBanner = banner_url && typeof banner_url === 'string' && banner_url.trim() ? banner_url.trim() : null;
+      if (targetBanner && targetBanner.includes('/raw/')) {
+        const rawPart = targetBanner.split('/raw/')[1];
+        if (rawPart) {
+          try {
+            const m = await pool.query(
+              `SELECT url_full, url_feed FROM media WHERE s3_key_raw = $1 AND status = 'ready'`,
+              ['raw/' + rawPart]
+            );
+            if (m.rowCount > 0 && (m.rows[0].url_full || m.rows[0].url_feed)) {
+              targetBanner = m.rows[0].url_full || m.rows[0].url_feed;
+            }
+          } catch {}
+        }
+      }
     }
 
     // Invalidate old cache (fail-safe)

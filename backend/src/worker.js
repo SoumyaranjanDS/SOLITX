@@ -111,6 +111,27 @@ const HANDLERS = {
       ]
     );
 
+    // 7. Auto-link to user profile if entityType is specified (Avatar / Banner)
+    if (job.data?.entityType === 'avatar') {
+      await pool.query(
+        `UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2`,
+        [urlFeed, userId]
+      );
+      try {
+        const u = await pool.query(`SELECT username FROM users WHERE id = $1`, [userId]);
+        if (u.rowCount > 0) await redis.del(`user:${u.rows[0].username}`);
+      } catch (e) {}
+    } else if (job.data?.entityType === 'banner') {
+      await pool.query(
+        `UPDATE users SET banner_url = $1, updated_at = NOW() WHERE id = $2`,
+        [urlFull || urlFeed, userId]
+      );
+      try {
+        const u = await pool.query(`SELECT username FROM users WHERE id = $1`, [userId]);
+        if (u.rowCount > 0) await redis.del(`user:${u.rows[0].username}`);
+      } catch (e) {}
+    }
+
     console.log(`[Worker] ✅ Media ${mediaId} optimized & published to CDN!`);
   },
   notifications: async (job) => {
