@@ -89,13 +89,25 @@ export const confirmUpload = async (req, res, next) => {
     );
 
     // Enqueue to background worker for Sharp image optimization & WebP generation
-    const jobId = await enqueueJob("media_processing", {
-      mediaId: media.id,
-      userId: media.user_id,
-      s3KeyRaw: media.s3_key_raw,
-      mimeType: media.mime_type,
-      idempotency_key: `media:process:${media.id}`,
-    });
+    let jobId = null;
+    try {
+      jobId = await enqueueJob("media_processing", {
+        mediaId: media.id,
+        userId: media.user_id,
+        s3KeyRaw: media.s3_key_raw,
+        mimeType: media.mime_type,
+        idempotency_key: `media:process:${media.id}`,
+      });
+    } catch (queueErr) {
+      console.warn(
+        `[MediaConfirm] Redis queue unavailable (${queueErr.message}). Media ${media_id} will be served directly from S3/CloudFront.`
+      );
+      // Mark as ready so it is immediately visible using raw S3/CloudFront fallback
+      await pool.query(
+        `UPDATE media SET status = 'ready', updated_at = NOW() WHERE id = $1`,
+        [media_id]
+      );
+    }
 
     const publicUrl = buildPublicMediaUrl(media.s3_key_raw);
 
@@ -105,10 +117,12 @@ export const confirmUpload = async (req, res, next) => {
         {
           media_id: media.id,
           public_url: publicUrl,
-          status: "processing",
+          status: jobId ? "processing" : "ready",
           job_id: jobId,
         },
-        "Media upload confirmed. Processing queued asynchronously."
+        jobId
+          ? "Media upload confirmed. Processing queued asynchronously."
+          : "Media upload confirmed. Ready via direct cloud storage."
       )
     );
   } catch (err) {

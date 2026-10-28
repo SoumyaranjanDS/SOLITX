@@ -167,8 +167,8 @@ async function processQueue(queueName) {
       // 1. Reliable dequeue (moves to queue:<name>:processing)
       item = await dequeueReliable(queueName);
       if (!item) {
-        // Queue is empty; sleep 500ms to avoid busy loop
-        await new Promise((r) => setTimeout(r, 500));
+        // Queue is empty; sleep 3000ms to preserve Redis quota and avoid tight busy-polling
+        await new Promise((r) => setTimeout(r, 3000));
         continue;
       }
 
@@ -194,8 +194,11 @@ async function processQueue(queueName) {
     } catch (err) {
       console.error(`[Worker] ❌ Error executing job on queue:${queueName}:`, err.message);
 
-      // 3. Resilient Error Handling (Retries with Exponential Backoff or DLQ)
-      if (item) {
+      // If dequeue or Redis connection failed, pause before hammering Redis again
+      if (!item) {
+        await new Promise((r) => setTimeout(r, 10000));
+      } else {
+        // 3. Resilient Error Handling (Retries with Exponential Backoff or DLQ)
         const failureRes = await handleJobFailure(queueName, item.job, item.raw, err);
         if (failureRes.action === "dead_letter") {
           console.warn(
