@@ -3,7 +3,11 @@ import redis from "../../config/redis.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { createNotification } from "../../services/notificationService.js";
-import { emitNewMessage, isUserOnline, getOnlineUsernames } from "../../services/socketService.js";
+import {
+  emitNewMessage,
+  isUserOnline,
+  getOnlineUsernames,
+} from "../../services/socketService.js";
 
 // GET Profile (Uses Redis Cache from Day 13)
 export const getUserProfile = async (req, res, next) => {
@@ -15,9 +19,15 @@ export const getUserProfile = async (req, res, next) => {
     try {
       const cachedUser = await redis.get(cacheKey);
       if (cachedUser) {
-        return res.status(200).json(
-          new ApiResponse(200, { source: "cache", user: JSON.parse(cachedUser) }, "Profile fetched from Cache")
-        );
+        return res
+          .status(200)
+          .json(
+            new ApiResponse(
+              200,
+              { source: "cache", user: JSON.parse(cachedUser) },
+              "Profile fetched from Cache",
+            ),
+          );
       }
     } catch (cacheErr) {
       // If Redis times out or is down, gracefully fallback to DB
@@ -60,9 +70,15 @@ export const getUserProfile = async (req, res, next) => {
 
     const user = result.rows[0];
 
-    return res.status(200).json(
-      new ApiResponse(200, { source: "database", user }, "Profile fetched from PostgreSQL")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { source: "database", user },
+          "Profile fetched from PostgreSQL",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -72,12 +88,19 @@ export const getUserProfile = async (req, res, next) => {
 export const updateUserProfile = async (req, res, next) => {
   try {
     const { username: paramUsername } = req.params;
-    const { name, bio, bio_link, avatar_url, banner_url, newUsername } = req.body;
-    
+    const { name, bio, bio_link, avatar_url, banner_url, newUsername } =
+      req.body;
+
     // Ensure the user is only updating their own profile
     const currentUserId = req.user.id;
-    const userCheck = await pool.query("SELECT id, username, username_set FROM users WHERE id = $1", [currentUserId]);
-    if (userCheck.rowCount === 0 || userCheck.rows[0].username !== paramUsername) {
+    const userCheck = await pool.query(
+      "SELECT id, username, username_set FROM users WHERE id = $1",
+      [currentUserId],
+    );
+    if (
+      userCheck.rowCount === 0 ||
+      userCheck.rows[0].username !== paramUsername
+    ) {
       throw new AppError(403, "You can only update your own profile");
     }
 
@@ -96,7 +119,10 @@ export const updateUserProfile = async (req, res, next) => {
     let targetUsername = paramUsername;
     let markUsernameSet = userCheck.rows[0].username_set;
 
-    if (newUsername && newUsername.trim().toLowerCase() !== paramUsername.toLowerCase()) {
+    if (
+      newUsername &&
+      newUsername.trim().toLowerCase() !== paramUsername.toLowerCase()
+    ) {
       // Username is permanent after onboarding setup
       if (userCheck.rows[0].username_set) {
         throw new AppError(400, "Username is permanent and cannot be changed");
@@ -104,9 +130,15 @@ export const updateUserProfile = async (req, res, next) => {
 
       const cleanUsername = newUsername.trim().toLowerCase();
       if (!/^[a-zA-Z0-9_]{3,20}$/.test(cleanUsername)) {
-        throw new AppError(400, "Username must be 3-20 characters with letters, numbers, or underscores");
+        throw new AppError(
+          400,
+          "Username must be 3-20 characters with letters, numbers, or underscores",
+        );
       }
-      const collision = await pool.query("SELECT 1 FROM users WHERE username = $1 AND id != $2", [cleanUsername, currentUserId]);
+      const collision = await pool.query(
+        "SELECT 1 FROM users WHERE username = $1 AND id != $2",
+        [cleanUsername, currentUserId],
+      );
       if (collision.rowCount > 0) {
         throw new AppError(400, "Username is already taken");
       }
@@ -142,7 +174,7 @@ export const updateUserProfile = async (req, res, next) => {
       banner_url !== undefined ? banner_url.trim() : null,
       targetUsername,
       markUsernameSet,
-      currentUserId
+      currentUserId,
     ]);
 
     if (result.rowCount === 0) {
@@ -156,9 +188,15 @@ export const updateUserProfile = async (req, res, next) => {
       } catch (e) {}
     }
 
-    return res.status(200).json(
-      new ApiResponse(200, { user: result.rows[0] }, "Profile updated successfully")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { user: result.rows[0] },
+          "Profile updated successfully",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -170,7 +208,10 @@ export const toggleFollow = async (req, res, next) => {
     const { username } = req.params;
     const currentUserId = req.user.id;
 
-    const targetUser = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+    const targetUser = await pool.query(
+      "SELECT id FROM users WHERE username = $1",
+      [username],
+    );
     if (targetUser.rowCount === 0) {
       throw new AppError(404, "User not found");
     }
@@ -182,22 +223,28 @@ export const toggleFollow = async (req, res, next) => {
 
     const followCheck = await pool.query(
       "SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2",
-      [currentUserId, targetUserId]
+      [currentUserId, targetUserId],
     );
 
     let isFollowing = false;
     if (followCheck.rowCount > 0) {
-      await pool.query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2", [currentUserId, targetUserId]);
+      await pool.query(
+        "DELETE FROM follows WHERE follower_id = $1 AND following_id = $2",
+        [currentUserId, targetUserId],
+      );
       isFollowing = false;
     } else {
-      await pool.query("INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)", [currentUserId, targetUserId]);
+      await pool.query(
+        "INSERT INTO follows (follower_id, following_id) VALUES ($1, $2)",
+        [currentUserId, targetUserId],
+      );
       isFollowing = true;
 
       // In-app Notification to followed user
       await createNotification({
         recipientId: targetUserId,
         actorId: currentUserId,
-        type: 'follow',
+        type: "follow",
       });
     }
 
@@ -208,13 +255,19 @@ export const toggleFollow = async (req, res, next) => {
 
     const countResult = await pool.query(
       "SELECT COUNT(*)::int as count FROM follows WHERE following_id = $1",
-      [targetUserId]
+      [targetUserId],
     );
     const followersCount = countResult.rows[0].count;
 
-    return res.status(200).json(
-      new ApiResponse(200, { isFollowing, followers_count: followersCount }, isFollowing ? "Followed" : "Unfollowed")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { isFollowing, followers_count: followersCount },
+          isFollowing ? "Followed" : "Unfollowed",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -224,7 +277,9 @@ export const toggleFollow = async (req, res, next) => {
 export const getSuggestedUsers = async (req, res, next) => {
   try {
     const currentUserId = req.user?.id || null;
-    const search = (req.query.q || req.query.search || "").trim().replace(/^@/, "");
+    const search = (req.query.q || req.query.search || "")
+      .trim()
+      .replace(/^@/, "");
     const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
 
     let whereClauses = [];
@@ -244,7 +299,8 @@ export const getSuggestedUsers = async (req, res, next) => {
       idx++;
     }
 
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
     const isFollowingSql = currentUserId
       ? `EXISTS(SELECT 1 FROM follows WHERE follower_id = $${userIdx} AND following_id = u.id) as is_following`
       : `false as is_following`;
@@ -271,9 +327,15 @@ export const getSuggestedUsers = async (req, res, next) => {
     `;
 
     const result = await pool.query(query, params);
-    return res.status(200).json(
-      new ApiResponse(200, { users: result.rows }, "Suggested users fetched successfully")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { users: result.rows },
+          "Suggested users fetched successfully",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -285,7 +347,10 @@ export const getFollowers = async (req, res, next) => {
     const { username } = req.params;
     const currentUserId = req.user?.id || null;
 
-    const userResult = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE username = $1",
+      [username],
+    );
     if (userResult.rowCount === 0) throw new AppError(404, "User not found");
     const targetUserId = userResult.rows[0].id;
 
@@ -315,7 +380,9 @@ export const getFollowers = async (req, res, next) => {
     }
 
     const result = await pool.query(query, params);
-    return res.status(200).json(new ApiResponse(200, { users: result.rows }, "Followers fetched"));
+    return res
+      .status(200)
+      .json(new ApiResponse(200, { users: result.rows }, "Followers fetched"));
   } catch (error) {
     next(error);
   }
@@ -327,7 +394,10 @@ export const getFollowing = async (req, res, next) => {
     const { username } = req.params;
     const currentUserId = req.user?.id || null;
 
-    const userResult = await pool.query("SELECT id FROM users WHERE username = $1", [username]);
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE username = $1",
+      [username],
+    );
     if (userResult.rowCount === 0) throw new AppError(404, "User not found");
     const targetUserId = userResult.rows[0].id;
 
@@ -357,7 +427,9 @@ export const getFollowing = async (req, res, next) => {
     }
 
     const result = await pool.query(query, params);
-    return res.status(200).json(new ApiResponse(200, { users: result.rows }, "Following fetched"));
+    return res
+      .status(200)
+      .json(new ApiResponse(200, { users: result.rows }, "Following fetched"));
   } catch (error) {
     next(error);
   }
@@ -389,9 +461,15 @@ export const getNotifications = async (req, res, next) => {
       LIMIT 60;
     `;
     const result = await pool.query(query, [userId]);
-    return res.status(200).json(
-      new ApiResponse(200, { notifications: result.rows, count: result.rowCount }, "Notifications fetched successfully")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { notifications: result.rows, count: result.rowCount },
+          "Notifications fetched successfully",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -401,8 +479,13 @@ export const getNotifications = async (req, res, next) => {
 export const markNotificationsRead = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    await pool.query("UPDATE notifications SET is_read = TRUE WHERE recipient_id = $1", [userId]);
-    return res.status(200).json(new ApiResponse(200, null, "Notifications marked as read"));
+    await pool.query(
+      "UPDATE notifications SET is_read = TRUE WHERE recipient_id = $1",
+      [userId],
+    );
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Notifications marked as read"));
   } catch (error) {
     next(error);
   }
@@ -435,7 +518,15 @@ export const getConversations = async (req, res, next) => {
       ORDER BY partner_id, last_message_at DESC;
     `;
     const result = await pool.query(query, [userId]);
-    return res.status(200).json(new ApiResponse(200, { conversations: result.rows }, "Conversations fetched"));
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { conversations: result.rows },
+          "Conversations fetched",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -447,13 +538,17 @@ export const getMessagesWithUser = async (req, res, next) => {
     const userId = req.user.id;
     const { username } = req.params;
 
-    const userRes = await pool.query("SELECT id, username, name FROM users WHERE username = $1", [username]);
+    const userRes = await pool.query(
+      "SELECT id, username, name FROM users WHERE username = $1",
+      [username],
+    );
     if (userRes.rowCount === 0) {
       throw new AppError(404, "User not found");
     }
     const partnerId = userRes.rows[0].id;
 
-    const messagesRes = await pool.query(`
+    const messagesRes = await pool.query(
+      `
       SELECT 
         m.id,
         m.sender_id,
@@ -466,9 +561,19 @@ export const getMessagesWithUser = async (req, res, next) => {
          OR (m.sender_id = $2 AND m.recipient_id = $1)
       ORDER BY m.created_at ASC
       LIMIT 100;
-    `, [userId, partnerId]);
+    `,
+      [userId, partnerId],
+    );
 
-    return res.status(200).json(new ApiResponse(200, { partner: userRes.rows[0], messages: messagesRes.rows }, "Messages fetched"));
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { partner: userRes.rows[0], messages: messagesRes.rows },
+          "Messages fetched",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -485,27 +590,36 @@ export const sendMessage = async (req, res, next) => {
       throw new AppError(400, "Message content cannot be empty");
     }
 
-    const userRes = await pool.query("SELECT id, username, name FROM users WHERE username = $1", [username]);
+    const userRes = await pool.query(
+      "SELECT id, username, name FROM users WHERE username = $1",
+      [username],
+    );
     if (userRes.rowCount === 0) {
       throw new AppError(404, "Recipient not found");
     }
     const recipientId = userRes.rows[0].id;
 
-    const insertRes = await pool.query(`
+    const insertRes = await pool.query(
+      `
       INSERT INTO messages (sender_id, recipient_id, content)
       VALUES ($1, $2, $3)
       RETURNING id, sender_id, recipient_id, content, created_at;
-    `, [userId, recipientId, content.trim()]);
+    `,
+      [userId, recipientId, content.trim()],
+    );
 
     // Fetch sender info for real-time socket payload
-    const senderRes = await pool.query("SELECT id, username, name FROM users WHERE id = $1", [userId]);
+    const senderRes = await pool.query(
+      "SELECT id, username, name FROM users WHERE id = $1",
+      [userId],
+    );
     const sender = senderRes.rows[0];
 
     // In-app Notification for direct message
     await createNotification({
       recipientId,
       actorId: userId,
-      type: 'message',
+      type: "message",
       messageContent: content.trim(),
     });
 
@@ -513,13 +627,21 @@ export const sendMessage = async (req, res, next) => {
       ...insertRes.rows[0],
       sender_username: sender?.username,
       sender_name: sender?.name,
-      is_mine: false
+      is_mine: false,
     };
 
     // Real-time live delivery via Socket.IO
     emitNewMessage(username, fullMessage);
 
-    return res.status(201).json(new ApiResponse(201, { message: { ...insertRes.rows[0], is_mine: true } }, "Message sent"));
+    return res
+      .status(201)
+      .json(
+        new ApiResponse(
+          201,
+          { message: { ...insertRes.rows[0], is_mine: true } },
+          "Message sent",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -529,17 +651,26 @@ export const sendMessage = async (req, res, next) => {
 export const getUnreadCounts = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT 
         COUNT(*) FILTER (WHERE is_read = FALSE)::int as unread_notifications,
         COUNT(*) FILTER (WHERE type = 'message' AND is_read = FALSE)::int as unread_messages
       FROM notifications
       WHERE recipient_id = $1;
-    `, [userId]);
-
-    return res.status(200).json(
-      new ApiResponse(200, result.rows[0] || { unread_notifications: 0, unread_messages: 0 }, "Unread counts fetched successfully")
+    `,
+      [userId],
     );
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          result.rows[0] || { unread_notifications: 0, unread_messages: 0 },
+          "Unread counts fetched successfully",
+        ),
+      );
   } catch (error) {
     next(error);
   }
@@ -550,8 +681,13 @@ export const deleteNotification = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
-    await pool.query("DELETE FROM notifications WHERE id = $1 AND recipient_id = $2", [id, userId]);
-    return res.status(200).json(new ApiResponse(200, null, "Notification deleted successfully"));
+    await pool.query(
+      "DELETE FROM notifications WHERE id = $1 AND recipient_id = $2",
+      [id, userId],
+    );
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, "Notification deleted successfully"));
   } catch (error) {
     next(error);
   }
@@ -562,20 +698,35 @@ export const getUsersOnlineStatus = async (req, res, next) => {
   try {
     const { usernames } = req.query;
     if (!usernames) {
-      return res.status(200).json(
-        new ApiResponse(200, { onlineUsers: getOnlineUsernames() }, "Online users fetched successfully")
-      );
+      return res
+        .status(200)
+        .json(
+          new ApiResponse(
+            200,
+            { onlineUsers: getOnlineUsernames() },
+            "Online users fetched successfully",
+          ),
+        );
     }
 
-    const list = String(usernames).split(",").map(u => u.trim().toLowerCase()).filter(Boolean);
+    const list = String(usernames)
+      .split(",")
+      .map((u) => u.trim().toLowerCase())
+      .filter(Boolean);
     const statuses = {};
-    list.forEach(u => {
+    list.forEach((u) => {
       statuses[u] = isUserOnline(u);
     });
 
-    return res.status(200).json(
-      new ApiResponse(200, { statuses }, "Online statuses fetched successfully")
-    );
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { statuses },
+          "Online statuses fetched successfully",
+        ),
+      );
   } catch (error) {
     next(error);
   }
