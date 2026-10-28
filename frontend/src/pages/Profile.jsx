@@ -25,6 +25,7 @@ import PostCard, { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
+import ImageCropModal from '../components/ImageCropModal';
 
 const TABS = ['Posts', 'Replies', 'Media', 'Likes'];
 
@@ -175,6 +176,11 @@ const Profile = () => {
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
   const [isRemovingBanner, setIsRemovingBanner] = useState(false);
   const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
+
+  // Crop & Resize Modal State
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [imageToCropSrc, setImageToCropSrc] = useState(null);
+  const [cropTarget, setCropTarget] = useState('direct'); // 'direct' | 'modal'
 
   // Full-Screen Avatar / Banner Viewer Lightbox State
   const [mediaViewer, setMediaViewer] = useState(null); // { src, title, type: 'avatar' | 'banner' }
@@ -421,39 +427,70 @@ const Profile = () => {
     }
   };
 
-  // Direct Avatar Upload (from profile avatar circle)
-  const handleDirectAvatarUpload = async (e) => {
+  // Direct Avatar Selection -> Triggers Crop & Resize Modal
+  const handleDirectAvatarUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const objectUrl = URL.createObjectURL(file);
+    setImageToCropSrc(objectUrl);
+    setCropTarget('direct');
+    setCropModalOpen(true);
+    e.target.value = '';
+  };
 
-    try {
-      setIsUploadingAvatar(true);
-      setAvatarUploadProgress(0);
+  // Crop Completion Handler (Uploads cropped canvas file to S3)
+  const handleCropComplete = async (croppedFile) => {
+    if (cropTarget === 'direct') {
+      try {
+        setIsUploadingAvatar(true);
+        setAvatarUploadProgress(0);
 
-      const { publicUrl } = await uploadMediaDirectToS3(file, (percent) => {
-        setAvatarUploadProgress(percent);
-      });
+        const { publicUrl } = await uploadMediaDirectToS3(croppedFile, (percent) => {
+          setAvatarUploadProgress(percent);
+        });
 
-      // Persist to backend immediately
-      const res = await api.put(`/users/${username}`, { avatar_url: publicUrl });
-      const updatedUser = res.data?.data?.user;
+        // Persist to backend immediately
+        const res = await api.put(`/users/${username}`, { avatar_url: publicUrl });
+        const updatedUser = res.data?.data?.user;
 
-      setUser(prev => ({ ...prev, avatar_url: publicUrl }));
-      setEditAvatarUrl(publicUrl);
+        setUser(prev => ({ ...prev, avatar_url: publicUrl }));
+        setEditAvatarUrl(publicUrl);
 
-      // Update localStorage & trigger event
-      const stored = JSON.parse(localStorage.getItem('user') || '{}');
-      const updatedStored = { ...stored, avatar_url: publicUrl };
-      localStorage.setItem('user', JSON.stringify(updatedStored));
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
+        // Update localStorage & trigger event
+        const stored = JSON.parse(localStorage.getItem('user') || '{}');
+        const updatedStored = { ...stored, avatar_url: publicUrl };
+        localStorage.setItem('user', JSON.stringify(updatedStored));
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
 
-      displayToast('Profile picture updated successfully');
-    } catch (err) {
-      displayToast(err.message || 'Failed to upload profile picture');
-    } finally {
-      setIsUploadingAvatar(false);
-      e.target.value = '';
+        setCropModalOpen(false);
+        setImageToCropSrc(null);
+        if (mediaViewer) setMediaViewer(null);
+
+        displayToast('Profile picture updated successfully');
+      } catch (err) {
+        displayToast(err.message || 'Failed to upload profile picture');
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    } else {
+      // Cropped inside Edit Modal
+      try {
+        setModalAvatarUploading(true);
+        setModalAvatarProgress(0);
+
+        const { publicUrl } = await uploadMediaDirectToS3(croppedFile, (pct) => {
+          setModalAvatarProgress(pct);
+        });
+
+        setEditAvatarUrl(publicUrl);
+        setCropModalOpen(false);
+        setImageToCropSrc(null);
+      } catch (err) {
+        setEditError(err.message || 'Failed to upload profile picture');
+      } finally {
+        setModalAvatarUploading(false);
+      }
     }
   };
 
@@ -525,17 +562,11 @@ const Profile = () => {
         e.target.value = '';
       }
     } else {
-      try {
-        setModalAvatarUploading(true);
-        setModalAvatarProgress(0);
-        const { publicUrl } = await uploadMediaDirectToS3(file, (pct) => setModalAvatarProgress(pct));
-        setEditAvatarUrl(publicUrl);
-      } catch (err) {
-        setEditError(err.message || 'Failed to upload profile picture');
-      } finally {
-        setModalAvatarUploading(false);
-        e.target.value = '';
-      }
+      const objectUrl = URL.createObjectURL(file);
+      setImageToCropSrc(objectUrl);
+      setCropTarget('modal');
+      setCropModalOpen(true);
+      e.target.value = '';
     }
   };
 
@@ -654,7 +685,19 @@ const Profile = () => {
         <div className="min-h-screen flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-[#0F1419] border-t-transparent rounded-full animate-spin" />
         </div>
-      </AppShell>
+        {/* Image Crop & Resize Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={imageToCropSrc}
+        onClose={() => {
+          setCropModalOpen(false);
+          setImageToCropSrc(null);
+        }}
+        onCropComplete={handleCropComplete}
+        isUploading={isUploadingAvatar || modalAvatarUploading}
+        uploadProgress={isUploadingAvatar ? avatarUploadProgress : modalAvatarProgress}
+      />
+    </AppShell>
     );
   }
 
@@ -766,23 +809,11 @@ const Profile = () => {
         {/* Profile Info Section */}
         <div className="px-4 pb-4">
           <div className="flex justify-between items-start">
-            {/* Avatar */}
-            <div className="-mt-12 sm:-mt-16 w-[82px] h-[82px] sm:w-[134px] sm:h-[134px] rounded-full border-4 border-white bg-gray-100 overflow-hidden flex-shrink-0 relative z-10 shadow-md group/avatar">
-              <img
-                src={getAvatarUrl(user)}
-                alt={user?.username || 'Avatar'}
-                onClick={() => {
-                  setMediaViewer({
-                    src: user?.avatar_url || getAvatarUrl(user),
-                    title: user?.name || user?.username,
-                    type: 'avatar'
-                  });
-                }}
-                className="w-full h-full object-cover bg-white cursor-pointer hover:opacity-95 transition-opacity"
-              />
-
-              {/* View Overlay on Hover */}
+            {/* Avatar Container (Outer wrapper without overflow-hidden so icon sits on top!) */}
+            <div className="-mt-12 sm:-mt-16 w-[82px] h-[82px] sm:w-[134px] sm:h-[134px] flex-shrink-0 relative z-20 group/avatar">
+              {/* Inner Circle Image (Overflow-hidden so image stays perfectly circular) */}
               <div 
+                className="w-full h-full rounded-full border-4 border-white bg-gray-100 overflow-hidden shadow-md relative cursor-pointer"
                 onClick={() => {
                   setMediaViewer({
                     src: user?.avatar_url || getAvatarUrl(user),
@@ -790,51 +821,44 @@ const Profile = () => {
                     type: 'avatar'
                   });
                 }}
-                className="absolute inset-0 bg-black/35 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover/avatar:opacity-100 transition-opacity"
               >
-                <ZoomIn size={20} className="drop-shadow-md" />
-                <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">View</span>
+                <img
+                  src={getAvatarUrl(user)}
+                  alt={user?.username || 'Avatar'}
+                  className="w-full h-full object-cover bg-white hover:opacity-95 transition-opacity"
+                />
+
+                {/* View Overlay on Hover */}
+                <div className="absolute inset-0 bg-black/35 backdrop-blur-[1px] flex flex-col items-center justify-center text-white opacity-0 group-hover/avatar:opacity-100 transition-opacity pointer-events-none">
+                  <ZoomIn size={20} className="drop-shadow-md" />
+                  <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">View</span>
+                </div>
+
+                {/* Avatar Uploading Overlay */}
+                {isUploadingAvatar && (
+                  <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-30">
+                    <div className="w-6 h-6 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
+                    <span className="text-[10px] font-bold">{avatarUploadProgress}%</span>
+                  </div>
+                )}
               </div>
 
-              {/* Direct Avatar Upload / Remove for Own Profile */}
+              {/* Direct Camera Upload Icon - Elevated on TOP of everything! */}
               {isOwnProfile && (
-                <div 
-                  onClick={(e) => e.stopPropagation()} 
-                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 flex items-center gap-1 z-20"
+                <label
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-0 right-0 p-2 sm:p-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full cursor-pointer shadow-xl border-2 border-white flex items-center justify-center transition-all active:scale-95 z-30"
+                  title="Upload profile picture"
                 >
-                  {user?.avatar_url && (
-                    <button
-                      type="button"
-                      onClick={handleDirectRemoveAvatar}
-                      disabled={isRemovingAvatar || isUploadingAvatar}
-                      className="p-1.5 sm:p-2 bg-black/70 hover:bg-red-600 text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-all"
-                      title="Remove profile photo (restore default)"
-                    >
-                      <Trash2 size={13} className="sm:w-3.5 sm:h-3.5" />
-                    </button>
-                  )}
-                  <label
-                    className="p-1.5 sm:p-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-transform"
-                    title="Change profile picture"
-                  >
-                    <Camera size={14} className="sm:w-4 sm:h-4" />
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleDirectAvatarUpload}
-                      disabled={isUploadingAvatar || isRemovingAvatar}
-                    />
-                  </label>
-                </div>
-              )}
-
-              {/* Avatar Uploading Overlay */}
-              {isUploadingAvatar && (
-                <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-30">
-                  <div className="w-6 h-6 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
-                  <span className="text-[10px] font-bold">{avatarUploadProgress}%</span>
-                </div>
+                  <Camera size={14} className="sm:w-4 sm:h-4" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleDirectAvatarUpload}
+                    disabled={isUploadingAvatar || isRemovingAvatar}
+                  />
+                </label>
               )}
             </div>
 
@@ -1554,23 +1578,64 @@ const Profile = () => {
 
           {/* Centered Image Container */}
           <div
-            className="flex-1 flex items-center justify-center p-4 overflow-hidden"
+            className="flex-1 flex flex-col items-center justify-center p-4 overflow-hidden gap-4"
             onClick={() => setMediaViewer(null)}
           >
             <div
-              className="relative max-w-full max-h-[85vh] flex items-center justify-center"
+              className="relative max-w-full max-h-[75vh] flex items-center justify-center"
               onClick={(e) => e.stopPropagation()}
             >
               <img
                 src={mediaViewer.src}
                 alt={mediaViewer.title}
-                className={`max-w-full max-h-[80vh] object-contain shadow-2xl transition-transform duration-200 select-none ${
+                className={`max-w-full max-h-[70vh] object-contain shadow-2xl transition-transform duration-200 select-none ${
                   mediaViewer.type === 'avatar'
-                    ? 'rounded-full border-4 border-white/20 aspect-square max-w-[min(80vw,480px)]'
+                    ? 'rounded-full border-4 border-white/20 aspect-square max-w-[min(80vw,420px)]'
                     : 'rounded-2xl border border-white/20 aspect-[3/1] max-w-[min(95vw,1000px)] w-full'
                 }`}
               />
             </div>
+
+            {/* 2 Buttons for Own Profile: Delete and Upload */}
+            {isOwnProfile && mediaViewer.type === 'avatar' && (
+              <div
+                className="flex items-center gap-3 z-20 mt-2"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Upload Button */}
+                <label
+                  className="px-4 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[13px] rounded-full cursor-pointer shadow-lg active:scale-95 flex items-center gap-2 transition-all border border-violet-400/30"
+                  title="Upload / Change profile picture"
+                >
+                  <Camera size={16} />
+                  <span>Upload new photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleDirectAvatarUpload}
+                    disabled={isUploadingAvatar || isRemovingAvatar}
+                  />
+                </label>
+
+                {/* Delete Button */}
+                {user?.avatar_url && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleDirectRemoveAvatar();
+                      setMediaViewer(null);
+                    }}
+                    disabled={isRemovingAvatar || isUploadingAvatar}
+                    className="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white font-bold text-[13px] rounded-full shadow-lg active:scale-95 flex items-center gap-2 transition-all border border-red-400/30"
+                    title="Remove profile picture (restore default avatar)"
+                  >
+                    <Trash2 size={16} />
+                    <span>Delete photo</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bottom Bar Info / Tips */}
