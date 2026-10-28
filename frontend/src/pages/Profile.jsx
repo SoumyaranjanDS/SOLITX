@@ -173,6 +173,8 @@ const Profile = () => {
   const [bannerUploadProgress, setBannerUploadProgress] = useState(0);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarUploadProgress, setAvatarUploadProgress] = useState(0);
+  const [isRemovingBanner, setIsRemovingBanner] = useState(false);
+  const [isRemovingAvatar, setIsRemovingAvatar] = useState(false);
 
   // Full-Screen Avatar / Banner Viewer Lightbox State
   const [mediaViewer, setMediaViewer] = useState(null); // { src, title, type: 'avatar' | 'banner' }
@@ -455,6 +457,56 @@ const Profile = () => {
     }
   };
 
+  // Direct Banner Removal (Revert to default gradient)
+  const handleDirectRemoveBanner = async () => {
+    if (!window.confirm('Remove banner image and restore default gradient?')) return;
+    try {
+      setIsRemovingBanner(true);
+      const res = await api.put(`/users/${username}`, { banner_url: null });
+      const updatedUser = res.data?.data?.user;
+
+      setUser(prev => ({ ...prev, banner_url: '' }));
+      setEditBannerUrl('');
+
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedStored = { ...stored, banner_url: null };
+      localStorage.setItem('user', JSON.stringify(updatedStored));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
+
+      displayToast('Banner removed. Restored to default.');
+    } catch (err) {
+      displayToast(err.response?.data?.message || 'Failed to remove banner');
+    } finally {
+      setIsRemovingBanner(false);
+    }
+  };
+
+  // Direct Avatar Removal (Revert to default monogram)
+  const handleDirectRemoveAvatar = async () => {
+    if (!window.confirm('Remove profile photo and restore default avatar?')) return;
+    try {
+      setIsRemovingAvatar(true);
+      const res = await api.put(`/users/${username}`, { avatar_url: null });
+      const updatedUser = res.data?.data?.user;
+
+      setUser(prev => ({ ...prev, avatar_url: '' }));
+      setEditAvatarUrl('');
+
+      const stored = JSON.parse(localStorage.getItem('user') || '{}');
+      const updatedStored = { ...stored, avatar_url: null };
+      localStorage.setItem('user', JSON.stringify(updatedStored));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: updatedUser || updatedStored }));
+
+      displayToast('Profile picture removed. Restored to default.');
+    } catch (err) {
+      displayToast(err.response?.data?.message || 'Failed to remove profile picture');
+    } finally {
+      setIsRemovingAvatar(false);
+    }
+  };
+
   // Upload handler inside the Edit Profile Modal
   const handleModalImageUpload = async (e, type) => {
     const file = e.target.files?.[0];
@@ -505,8 +557,8 @@ const Profile = () => {
         name: cleanName,
         bio: cleanBio,
         bio_link: cleanBioLink,
-        avatar_url: editAvatarUrl || undefined,
-        banner_url: editBannerUrl || undefined,
+        avatar_url: editAvatarUrl ? editAvatarUrl.trim() : null,
+        banner_url: editBannerUrl ? editBannerUrl.trim() : null,
       };
 
       const res = await api.put(`/users/${username}`, payload);
@@ -531,8 +583,8 @@ const Profile = () => {
           username: updatedUser.username,
           bio: updatedUser.bio,
           bio_link: updatedUser.bio_link,
-          avatar_url: updatedUser.avatar_url,
-          banner_url: updatedUser.banner_url,
+          avatar_url: updatedUser.avatar_url || null,
+          banner_url: updatedUser.banner_url || null,
         };
         localStorage.setItem('user', JSON.stringify(updatedStored));
         window.dispatchEvent(new Event('storage'));
@@ -661,23 +713,41 @@ const Profile = () => {
             <div className="w-full h-full bg-gradient-to-r from-violet-950 via-slate-900 to-indigo-950" />
           )}
 
-          {/* Direct Banner Upload for Own Profile */}
+          {/* Direct Banner Actions for Own Profile */}
           {isOwnProfile && (
-            <label
+            <div 
               onClick={(e) => e.stopPropagation()}
-              className="absolute top-3 right-3 px-3 py-1.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 opacity-90 hover:opacity-100 group-hover/banner:opacity-100 border border-white/10 z-10"
-              title="Change banner image"
+              className="absolute top-3 right-3 flex items-center gap-2 z-10"
             >
-              <Camera size={15} />
-              <span className="text-[12px] font-semibold hidden sm:inline">Edit banner</span>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleDirectBannerUpload}
-                disabled={isUploadingBanner}
-              />
-            </label>
+              {user?.banner_url && (
+                <button
+                  type="button"
+                  onClick={handleDirectRemoveBanner}
+                  disabled={isRemovingBanner || isUploadingBanner}
+                  className="px-3 py-1.5 bg-black/60 hover:bg-red-600/90 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 border border-white/10"
+                  title="Remove banner (restore default)"
+                >
+                  <Trash2 size={13} />
+                  <span className="text-[12px] font-semibold hidden sm:inline">Remove</span>
+                </button>
+              )}
+              <label
+                className="px-3 py-1.5 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95 flex items-center gap-1.5 opacity-90 hover:opacity-100 group-hover/banner:opacity-100 border border-white/10"
+                title="Change banner image"
+              >
+                <Camera size={15} />
+                <span className="text-[12px] font-semibold hidden sm:inline">
+                  {user?.banner_url ? 'Edit banner' : 'Add banner'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleDirectBannerUpload}
+                  disabled={isUploadingBanner || isRemovingBanner}
+                />
+              </label>
+            </div>
           )}
 
           {/* Banner Uploading Overlay */}
@@ -726,22 +796,37 @@ const Profile = () => {
                 <span className="text-[10px] sm:text-[11px] font-bold mt-0.5">View</span>
               </div>
 
-              {/* Direct Avatar Upload for Own Profile */}
+              {/* Direct Avatar Upload / Remove for Own Profile */}
               {isOwnProfile && (
-                <label
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 p-1.5 sm:p-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-transform z-20"
-                  title="Change profile picture"
+                <div 
+                  onClick={(e) => e.stopPropagation()} 
+                  className="absolute bottom-1 right-1 sm:bottom-2 sm:right-2 flex items-center gap-1 z-20"
                 >
-                  <Camera size={14} className="sm:w-4 sm:h-4" />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleDirectAvatarUpload}
-                    disabled={isUploadingAvatar}
-                  />
-                </label>
+                  {user?.avatar_url && (
+                    <button
+                      type="button"
+                      onClick={handleDirectRemoveAvatar}
+                      disabled={isRemovingAvatar || isUploadingAvatar}
+                      className="p-1.5 sm:p-2 bg-black/70 hover:bg-red-600 text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-all"
+                      title="Remove profile photo (restore default)"
+                    >
+                      <Trash2 size={13} className="sm:w-3.5 sm:h-3.5" />
+                    </button>
+                  )}
+                  <label
+                    className="p-1.5 sm:p-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full cursor-pointer shadow-lg active:scale-95 transition-transform"
+                    title="Change profile picture"
+                  >
+                    <Camera size={14} className="sm:w-4 sm:h-4" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleDirectAvatarUpload}
+                      disabled={isUploadingAvatar || isRemovingAvatar}
+                    />
+                  </label>
+                </div>
               )}
 
               {/* Avatar Uploading Overlay */}
@@ -1040,18 +1125,33 @@ const Profile = () => {
                   <div className="w-full h-full bg-gradient-to-r from-violet-950 via-slate-900 to-indigo-950" />
                 )}
 
-                {/* Banner Camera Picker */}
-                <label className="p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full text-white cursor-pointer transition-all active:scale-95 shadow-md flex items-center gap-1.5 z-10 border border-white/10">
-                  <Camera size={18} />
-                  <span className="text-[12px] font-semibold pr-1">Change Banner</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => handleModalImageUpload(e, 'banner')}
-                    disabled={modalBannerUploading}
-                  />
-                </label>
+                {/* Banner Action Buttons */}
+                <div className="flex items-center gap-2 z-10">
+                  <label className="p-2 sm:p-2.5 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full text-white cursor-pointer transition-all active:scale-95 shadow-md flex items-center gap-1.5 border border-white/10">
+                    <Camera size={16} />
+                    <span className="text-[12px] font-semibold pr-1">
+                      {editBannerUrl ? 'Change' : 'Add Banner'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handleModalImageUpload(e, 'banner')}
+                      disabled={modalBannerUploading}
+                    />
+                  </label>
+                  {editBannerUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditBannerUrl('')}
+                      className="p-2 sm:p-2.5 bg-black/60 hover:bg-red-600/90 backdrop-blur-md rounded-full text-white cursor-pointer transition-all active:scale-95 shadow-md flex items-center gap-1.5 border border-white/10"
+                      title="Remove banner (restore default)"
+                    >
+                      <Trash2 size={16} />
+                      <span className="text-[12px] font-semibold pr-1">Remove</span>
+                    </button>
+                  )}
+                </div>
 
                 {modalBannerUploading && (
                   <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center text-white z-20 gap-2">
@@ -1062,29 +1162,44 @@ const Profile = () => {
               </div>
 
               {/* Modal Avatar Row */}
-              <div className="px-6 relative -mt-10 sm:-mt-12 flex items-center justify-between z-20 mb-4">
-                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white bg-gray-100 overflow-hidden shadow-md group/modalAvatar">
-                  <img
-                    src={getAvatarUrl(editAvatarUrl || user)}
-                    alt="Avatar preview"
-                    className="w-full h-full object-cover bg-white"
-                  />
-                  <label className="absolute inset-0 bg-black/45 hover:bg-black/65 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer transition-all">
-                    <Camera size={20} />
-                    <span className="text-[10px] font-bold mt-0.5">Change</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handleModalImageUpload(e, 'avatar')}
-                      disabled={modalAvatarUploading}
+              <div className="px-6 relative -mt-10 sm:-mt-12 flex items-end justify-between z-20 mb-4">
+                <div className="flex items-end gap-3">
+                  <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white bg-gray-100 overflow-hidden shadow-md group/modalAvatar">
+                    <img
+                      src={getAvatarUrl(editAvatarUrl || user?.username)}
+                      alt="Avatar preview"
+                      className="w-full h-full object-cover bg-white"
                     />
-                  </label>
-                  {modalAvatarUploading && (
-                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
-                      <div className="w-5 h-5 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
-                      <span className="text-[10px] font-bold">{modalAvatarProgress}%</span>
-                    </div>
+                    <label className="absolute inset-0 bg-black/45 hover:bg-black/65 backdrop-blur-[1px] flex flex-col items-center justify-center text-white cursor-pointer transition-all">
+                      <Camera size={20} />
+                      <span className="text-[10px] font-bold mt-0.5">Change</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleModalImageUpload(e, 'avatar')}
+                        disabled={modalAvatarUploading}
+                      />
+                    </label>
+                    {modalAvatarUploading && (
+                      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center text-white z-20">
+                        <div className="w-5 h-5 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin mb-1" />
+                        <span className="text-[10px] font-bold">{modalAvatarProgress}%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remove Avatar Button in Modal */}
+                  {editAvatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setEditAvatarUrl('')}
+                      className="mb-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-full text-[12px] font-semibold transition-all active:scale-95 flex items-center gap-1.5 shadow-sm"
+                      title="Remove profile picture (restore default avatar)"
+                    >
+                      <Trash2 size={13} />
+                      <span>Remove photo</span>
+                    </button>
                   )}
                 </div>
               </div>

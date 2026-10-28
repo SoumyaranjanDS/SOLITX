@@ -94,7 +94,7 @@ export const updateUserProfile = async (req, res, next) => {
     // Ensure the user is only updating their own profile
     const currentUserId = req.user.id;
     const userCheck = await pool.query(
-      "SELECT id, username, username_set FROM users WHERE id = $1",
+      "SELECT id, username, username_set, avatar_url, banner_url FROM users WHERE id = $1",
       [currentUserId],
     );
     if (
@@ -146,6 +146,18 @@ export const updateUserProfile = async (req, res, next) => {
       markUsernameSet = true;
     }
 
+    // Determine target avatar_url (support removing image -> null for default image)
+    let targetAvatar = userCheck.rows[0].avatar_url;
+    if (avatar_url !== undefined) {
+      targetAvatar = avatar_url && typeof avatar_url === 'string' && avatar_url.trim() ? avatar_url.trim() : null;
+    }
+
+    // Determine target banner_url (support removing image -> null for default gradient)
+    let targetBanner = userCheck.rows[0].banner_url;
+    if (banner_url !== undefined) {
+      targetBanner = banner_url && typeof banner_url === 'string' && banner_url.trim() ? banner_url.trim() : null;
+    }
+
     // Invalidate old cache (fail-safe)
     try {
       await redis.del(`user:${paramUsername}`);
@@ -158,8 +170,8 @@ export const updateUserProfile = async (req, res, next) => {
         name = COALESCE($1, name),
         bio = COALESCE($2, bio), 
         bio_link = COALESCE($3, bio_link),
-        avatar_url = COALESCE($4, avatar_url),
-        banner_url = COALESCE($5, banner_url),
+        avatar_url = $4,
+        banner_url = $5,
         username = $6,
         username_set = $7,
         updated_at = NOW() 
@@ -167,11 +179,11 @@ export const updateUserProfile = async (req, res, next) => {
       RETURNING id, name, username, email, bio, bio_link, avatar_url, banner_url, created_at, updated_at;
     `;
     const result = await pool.query(updateQuery, [
-      name !== undefined ? name.trim() : null,
-      bio !== undefined ? bio.trim() : null,
-      bio_link !== undefined ? bio_link.trim() : null,
-      avatar_url !== undefined ? avatar_url.trim() : null,
-      banner_url !== undefined ? banner_url.trim() : null,
+      name !== undefined && name !== null ? name.trim() : null,
+      bio !== undefined && bio !== null ? bio.trim() : null,
+      bio_link !== undefined && bio_link !== null ? bio_link.trim() : null,
+      targetAvatar,
+      targetBanner,
       targetUsername,
       markUsernameSet,
       currentUserId,

@@ -283,7 +283,7 @@ const OnboardingModal = ({ isOpen, onComplete }) => {
 
       const payload = {
         bio: bioInput.trim(),
-        avatar_url: avatarUrl ? avatarUrl.trim() : undefined,
+        avatar_url: avatarUrl ? avatarUrl.trim() : null,
         newUsername: cleanUsername && cleanUsername !== currentParamUsername ? cleanUsername : undefined,
       };
 
