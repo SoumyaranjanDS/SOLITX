@@ -685,19 +685,7 @@ const Profile = () => {
         <div className="min-h-screen flex items-center justify-center">
           <div className="w-8 h-8 border-2 border-[#0F1419] border-t-transparent rounded-full animate-spin" />
         </div>
-        {/* Image Crop & Resize Modal */}
-      <ImageCropModal
-        isOpen={cropModalOpen}
-        imageSrc={imageToCropSrc}
-        onClose={() => {
-          setCropModalOpen(false);
-          setImageToCropSrc(null);
-        }}
-        onCropComplete={handleCropComplete}
-        isUploading={isUploadingAvatar || modalAvatarUploading}
-        uploadProgress={isUploadingAvatar ? avatarUploadProgress : modalAvatarProgress}
-      />
-    </AppShell>
+      </AppShell>
     );
   }
 
@@ -1644,6 +1632,19 @@ const Profile = () => {
           </div>
         </div>
       )}
+
+      {/* Image Crop & Resize Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={imageToCropSrc}
+        onClose={() => {
+          setCropModalOpen(false);
+          setImageToCropSrc(null);
+        }}
+        onCropComplete={handleCropComplete}
+        isUploading={isUploadingAvatar || modalAvatarUploading}
+        uploadProgress={isUploadingAvatar ? avatarUploadProgress : modalAvatarProgress}
+      />
     </AppShell>
   );
 };

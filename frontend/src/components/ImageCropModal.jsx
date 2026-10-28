@@ -6,10 +6,10 @@ import { X, ZoomIn, ZoomOut, Check, RotateCcw, Move } from 'lucide-react';
  * 
  * Provides an interactive circular crop and resize modal for profile avatars (DP).
  * Features:
+ * - Normalized image fitting: scales any image (from 200px to 8000px) so its shortest edge fits the circle at 1x.
  * - Circular mask overlay showing exactly what will appear in the DP circle.
  * - Smooth drag-to-pan (mouse and touch friendly).
  * - Zoom slider and buttons (1x to 3x).
- * - Live mini-DP circle preview.
  * - High-resolution (512x512) canvas export into a standard File object.
  */
 const ImageCropModal = ({
@@ -24,13 +24,14 @@ const ImageCropModal = ({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [baseSize, setBaseSize] = useState({ width: 0, height: 0 });
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
 
   const containerRef = useRef(null);
   const imageRef = useRef(null);
 
   // Viewport & Circle diameter
-  const CROP_SIZE = 260; // diameter of the crop circle in px
+  const CROP_SIZE = 240; // diameter of the crop circle in px
 
   // Reset transforms whenever a new image is loaded
   useEffect(() => {
@@ -40,17 +41,28 @@ const ImageCropModal = ({
     }
   }, [isOpen, imageSrc]);
 
-  // Handle image load to determine initial fitting scale
+  // Handle image load: normalize base size to fit the crop circle
   const onImageLoaded = (e) => {
     const { naturalWidth, naturalHeight } = e.currentTarget;
-    setImageSize({ width: naturalWidth, height: naturalHeight });
+    setNaturalSize({ width: naturalWidth, height: naturalHeight });
 
-    // Fit image so shortest dimension fills the CROP_SIZE
-    const minDim = Math.min(naturalWidth, naturalHeight);
-    if (minDim > 0) {
-      // Scale so that minimum dimension matches at least the crop size
-      const initialScale = Math.max(1, CROP_SIZE / minDim);
-      setScale(initialScale);
+    if (naturalWidth && naturalHeight) {
+      let baseW = CROP_SIZE;
+      let baseH = CROP_SIZE;
+
+      if (naturalWidth >= naturalHeight) {
+        // Landscape or square: height is CROP_SIZE, width expands proportionally
+        baseH = CROP_SIZE;
+        baseW = (naturalWidth / naturalHeight) * CROP_SIZE;
+      } else {
+        // Portrait: width is CROP_SIZE, height expands proportionally
+        baseW = CROP_SIZE;
+        baseH = (naturalHeight / naturalWidth) * CROP_SIZE;
+      }
+
+      setBaseSize({ width: baseW, height: baseH });
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
     }
   };
 
@@ -99,25 +111,17 @@ const ImageCropModal = ({
   const handleWheel = (e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    setScale((prev) => Math.min(3, Math.max(0.8, Number((prev + delta).toFixed(2)))));
+    setScale((prev) => Math.min(3, Math.max(1, Number((prev + delta).toFixed(2)))));
   };
 
   // Perform High-Res Canvas Crop
   const handleApplyCrop = () => {
-    if (!imageRef.current || !containerRef.current) return;
+    if (!imageRef.current || !containerRef.current || baseSize.width === 0) return;
 
     const img = imageRef.current;
     const container = containerRef.current;
     const containerRect = container.getBoundingClientRect();
 
-    // Circle center relative to container
-    const circleCenterX = containerRect.width / 2;
-    const circleCenterY = containerRect.height / 2;
-    const circleRadius = CROP_SIZE / 2;
-
-    // Image center relative to container:
-    // The image has transform translate(position.x, position.y) scale(scale)
-    // We compute the source coordinates on the natural image:
     const outputSize = 512;
     const canvas = document.createElement('canvas');
     canvas.width = outputSize;
@@ -126,33 +130,32 @@ const ImageCropModal = ({
 
     if (!ctx) return;
 
-    // Smooth rendering
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
-    // Current displayed dimensions of the image:
-    const renderedWidth = img.width * scale;
-    const renderedHeight = img.height * scale;
+    // Currently rendered dimensions:
+    const renderedWidth = baseSize.width * scale;
+    const renderedHeight = baseSize.height * scale;
 
-    // Image top-left in container coordinates:
-    const imgLeftInContainer = (containerRect.width - renderedWidth) / 2 + position.x;
-    const imgTopInContainer = (containerRect.height - renderedHeight) / 2 + position.y;
+    // Image top-left in container coords:
+    const imgLeft = (containerRect.width - renderedWidth) / 2 + position.x;
+    const imgTop = (containerRect.height - renderedHeight) / 2 + position.y;
 
-    // Circle top-left in container coordinates:
-    const circleLeftInContainer = circleCenterX - circleRadius;
-    const circleTopInContainer = circleCenterY - circleRadius;
+    // Circle top-left in container coords:
+    const circleLeft = (containerRect.width - CROP_SIZE) / 2;
+    const circleTop = (containerRect.height - CROP_SIZE) / 2;
 
-    // Distance from image top-left to circle top-left in displayed pixels:
-    const cropXDisplayed = circleLeftInContainer - imgLeftInContainer;
-    const cropYDisplayed = circleTopInContainer - imgTopInContainer;
+    // Crop box offset on displayed image:
+    const cropXDisplayed = circleLeft - imgLeft;
+    const cropYDisplayed = circleTop - imgTop;
 
-    // Convert displayed pixels to natural image pixels:
-    const naturalRatio = img.naturalWidth / renderedWidth;
-    const srcX = cropXDisplayed * naturalRatio;
-    const srcY = cropYDisplayed * naturalRatio;
-    const srcSize = CROP_SIZE * naturalRatio;
+    // Ratio to natural image:
+    const ratio = naturalSize.width / renderedWidth;
+    const srcX = cropXDisplayed * ratio;
+    const srcY = cropYDisplayed * ratio;
+    const srcSize = CROP_SIZE * ratio;
 
-    // Draw cropped region to canvas
+    // Draw to canvas
     ctx.drawImage(
       img,
       srcX,
@@ -185,7 +188,7 @@ const ImageCropModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onTouchMove={handleTouchMove}
@@ -195,7 +198,7 @@ const ImageCropModal = ({
       }}
     >
       <div
-        className="bg-white rounded-3xl w-full max-w-[440px] overflow-hidden shadow-2xl border border-gray-100 flex flex-col animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl w-full max-w-[420px] overflow-hidden shadow-2xl border border-gray-100 flex flex-col animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -224,7 +227,7 @@ const ImageCropModal = ({
           onMouseDown={handleMouseDown}
           onTouchStart={handleTouchStart}
           onWheel={handleWheel}
-          className="relative w-full h-[320px] bg-slate-950 overflow-hidden flex items-center justify-center select-none cursor-grab active:cursor-grabbing"
+          className="relative w-full h-[300px] bg-slate-950 overflow-hidden flex items-center justify-center select-none cursor-grab active:cursor-grabbing"
         >
           {/* Underlying Image */}
           <img
@@ -234,6 +237,8 @@ const ImageCropModal = ({
             onLoad={onImageLoaded}
             draggable={false}
             style={{
+              width: baseSize.width > 0 ? `${baseSize.width}px` : 'auto',
+              height: baseSize.height > 0 ? `${baseSize.height}px` : 'auto',
               transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
               transformOrigin: 'center center',
               transition: isDragging ? 'none' : 'transform 0.05s ease-out',
@@ -242,16 +247,16 @@ const ImageCropModal = ({
           />
 
           {/* Circular Cutout Mask */}
-          {/* Using huge boxShadow to darken everything outside the circle */}
+          {/* Giant boxShadow creates seamless dark overlay outside the circle */}
           <div
-            className="absolute rounded-full border-2 border-white/90 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"
+            className="absolute rounded-full border-2 border-white/90 pointer-events-none shadow-[0_0_0_9999px_rgba(0,0,0,0.65)]"
             style={{
               width: `${CROP_SIZE}px`,
               height: `${CROP_SIZE}px`,
             }}
           >
-            {/* Subtle crosshair guide lines */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
+            {/* Crosshair guide lines */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-25">
               <div className="w-full h-[1px] bg-white" />
               <div className="h-full w-[1px] bg-white absolute" />
             </div>
@@ -275,12 +280,12 @@ const ImageCropModal = ({
         </div>
 
         {/* Controls Toolbar */}
-        <div className="px-6 py-4 space-y-4 bg-gray-50/50 border-t border-gray-100">
+        <div className="px-5 py-4 space-y-4 bg-gray-50/50 border-t border-gray-100">
           {/* Zoom Slider */}
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => setScale((s) => Math.max(0.8, Number((s - 0.1).toFixed(2))))}
+              onClick={() => setScale((s) => Math.max(1, Number((s - 0.1).toFixed(2))))}
               className="p-1.5 rounded-full hover:bg-gray-200 text-gray-600 transition-colors"
               title="Zoom out"
             >
@@ -288,7 +293,7 @@ const ImageCropModal = ({
             </button>
             <input
               type="range"
-              min="0.8"
+              min="1"
               max="3"
               step="0.02"
               value={scale}
