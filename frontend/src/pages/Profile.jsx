@@ -395,6 +395,7 @@ const Profile = () => {
   const handleDirectBannerUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (mediaViewer) setMediaViewer(null);
 
     try {
       setIsUploadingBanner(true);
@@ -423,7 +424,9 @@ const Profile = () => {
       displayToast(err.message || 'Failed to upload banner');
     } finally {
       setIsUploadingBanner(false);
-      e.target.value = '';
+      setTimeout(() => {
+      try { e.target.value = ''; } catch {}
+    }, 200);
     }
   };
 
@@ -431,11 +434,14 @@ const Profile = () => {
   const handleDirectAvatarUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (mediaViewer) setMediaViewer(null);
     const objectUrl = URL.createObjectURL(file);
     setImageToCropSrc(objectUrl);
     setCropTarget('direct');
     setCropModalOpen(true);
-    e.target.value = '';
+    setTimeout(() => {
+      try { e.target.value = ''; } catch {}
+    }, 200);
   };
 
   // Crop Completion Handler (Uploads cropped canvas file to S3)
@@ -548,6 +554,7 @@ const Profile = () => {
   const handleModalImageUpload = async (e, type) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (mediaViewer) setMediaViewer(null);
 
     if (type === 'banner') {
       try {
@@ -559,14 +566,18 @@ const Profile = () => {
         setEditError(err.message || 'Failed to upload banner');
       } finally {
         setModalBannerUploading(false);
-        e.target.value = '';
+        setTimeout(() => {
+      try { e.target.value = ''; } catch {}
+    }, 200);
       }
     } else {
       const objectUrl = URL.createObjectURL(file);
       setImageToCropSrc(objectUrl);
       setCropTarget('modal');
       setCropModalOpen(true);
-      e.target.value = '';
+      setTimeout(() => {
+      try { e.target.value = ''; } catch {}
+    }, 200);
     }
   };
 

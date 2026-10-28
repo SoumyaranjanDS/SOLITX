@@ -633,6 +633,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
             : 'invisible opacity-0 pointer-events-none delay-300'
         }`}
         aria-hidden={!isDrawerOpen}
+        inert={!isDrawerOpen ? '' : undefined}
       >
         {/* Backdrop Fade In / Out */}
         <div
