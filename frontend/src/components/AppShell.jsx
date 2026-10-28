@@ -27,11 +27,48 @@ import { getSocket, disconnectSocket } from '../socket';
 import { getAvatarUrl } from '../utils/avatar';
 
 // ─── SOLITX Logo ──────────────────────────────────────────────────────────────
-export const SolitxLogo = ({ size = 30 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-    <path d="M10 22 L16 10 L22 22" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    <circle cx="16" cy="10" r="2.5" fill="#7C3AED" />
-    <path d="M10 22 H22" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" />
+export const SolitxLogo = ({ size = 30, className = '' }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 32 32" 
+    fill="none" 
+    xmlns="http://www.w3.org/2000/svg"
+    className={className}
+  >
+    <defs>
+      <linearGradient id="solitx-nav-spine" x1="10%" y1="10%" x2="90%" y2="90%">
+        <stop offset="0%" stopColor="#A855F7" />
+        <stop offset="50%" stopColor="#7C3AED" />
+        <stop offset="100%" stopColor="#4F46E5" />
+      </linearGradient>
+      <linearGradient id="solitx-nav-cross" x1="85%" y1="15%" x2="15%" y2="85%">
+        <stop offset="0%" stopColor="#38BDF8" />
+        <stop offset="100%" stopColor="#818CF8" />
+      </linearGradient>
+    </defs>
+    {/* S Ribbon */}
+    <path 
+      d="M22.5 8 H12 C9 8 6.5 10.4 6.5 13.5 C6.5 16 8.1 18.1 10.4 18.7 L19.6 21.2 C21.4 21.7 22.5 23.2 22.5 24.9 C22.5 26.8 20.9 28.5 19 28.5 H8" 
+      stroke="url(#solitx-nav-spine)" 
+      strokeWidth="2.8" 
+      strokeLinecap="round" 
+      strokeLinejoin="round" 
+    />
+    {/* Counter X Slash Upper */}
+    <path 
+      d="M23 9 L17.5 14.5" 
+      stroke="url(#solitx-nav-cross)" 
+      strokeWidth="2.8" 
+      strokeLinecap="round" 
+    />
+    {/* Counter X Slash Lower */}
+    <path 
+      d="M14.5 17.5 L9 23" 
+      stroke="url(#solitx-nav-cross)" 
+      strokeWidth="2.8" 
+      strokeLinecap="round" 
+    />
   </svg>
 );
 

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+  <defs>
+    <radialGradient id="logo-bg" cx="50%" cy="50%" r="65%" fx="30%" fy="25%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="60%" stop-color="#0F1419" />
+      <stop offset="100%" stop-color="#080A0D" />
+    </radialGradient>
+    <linearGradient id="logo-spine" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+    <linearGradient id="logo-cross" x1="85%" y1="15%" x2="15%" y2="85%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#818CF8" />
+    </linearGradient>
+    <linearGradient id="logo-text-accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Left Icon Mark -->
+  <g transform="translate(10, 10)">
+    <rect width="60" height="60" rx="16" fill="url(#logo-bg)" />
+    <rect width="58.5" height="58.5" x="0.75" y="0.75" rx="15.25" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
+    
+    <!-- Scale icon paths from 100x100 to 60x60 -->
+    <g transform="scale(0.6)">
+      <!-- S Ribbon -->
+      <path 
+        d="M71 25 H38 C28.6 25 21 32.6 21 42 C21 49.7 26.1 56.2 33.3 58.1 L60.7 65.4 C66.1 66.8 69.5 71.3 69.5 76.4 C69.5 82.3 64.6 87 58.7 87 H25" 
+        stroke="url(#logo-spine)" 
+        stroke-width="8.5" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+      />
+      <!-- Counter 'X' Slash Upper -->
+      <path d="M72.5 28 L54.5 46" stroke="url(#logo-cross)" stroke-width="8.5" stroke-linecap="round" />
+      <!-- Counter 'X' Slash Lower -->
+      <path d="M45.5 55 L27.5 73" stroke="url(#logo-cross)" stroke-width="8.5" stroke-linecap="round" />
+    </g>
+  </g>
+
+  <!-- Wordmark "SOLITX" -->
+  <g transform="translate(86, 48)">
+    <text font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="28" letter-spacing="-0.04em">
+      <tspan fill="#0F1419">SOLIT</tspan>
+      <tspan fill="url(#logo-text-accent)">X</tspan>
+    </text>
+    <text y="16" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-weight="600" font-size="9" letter-spacing="0.12em" fill="#64748B">DEVELOPER NETWORK</text>
+  </g>
+</svg>

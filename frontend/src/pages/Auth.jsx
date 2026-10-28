@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, LogIn } from 'lucide-react';
 import api from '../api';
+import { SolitxLogo } from '../components/AppShell';
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -52,12 +53,8 @@ const Auth = () => {
 
       {/* Top Left Logo */}
       <div className="absolute top-6 left-6 z-20 flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-        <div className="w-8 h-8 bg-[#0F1419] rounded-[8px] flex items-center justify-center transform rotate-3">
-          <svg width="18" height="18" viewBox="0 0 32 32" fill="none">
-            <path d="M10 22 L16 10 L22 22" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="16" cy="10" r="3" fill="white"/>
-            <path d="M10 22 H22" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-          </svg>
+        <div className="w-9 h-9 bg-[#0F1419] rounded-[10px] flex items-center justify-center shadow-sm">
+          <SolitxLogo size={22} />
         </div>
         <span className="font-extrabold text-[20px] text-[#0F1419] tracking-tight">SOLITX</span>
       </div>

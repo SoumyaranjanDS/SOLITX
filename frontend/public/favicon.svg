@@ -1,4 +1,46 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" fill="#F9F8F6"/>
-  <text x="50%" y="54%" font-family="system-ui, -apple-system, sans-serif" font-size="60" font-weight="900" text-anchor="middle" dominant-baseline="middle" fill="#141413">S<tspan fill="#1A56DB">X</tspan></text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <radialGradient id="fav-bg" cx="50%" cy="50%" r="65%" fx="30%" fy="25%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="60%" stop-color="#0F1419" />
+      <stop offset="100%" stop-color="#080A0D" />
+    </radialGradient>
+    <linearGradient id="fav-spine" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="50%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+    <linearGradient id="fav-cross" x1="85%" y1="15%" x2="15%" y2="85%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#818CF8" />
+    </linearGradient>
+  </defs>
+
+  <rect width="100" height="100" rx="24" fill="url(#fav-bg)" />
+  <rect width="98" height="98" x="1" y="1" rx="23" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
+
+  <!-- S Ribbon -->
+  <path 
+    d="M71 25 H38 C28.6 25 21 32.6 21 42 C21 49.7 26.1 56.2 33.3 58.1 L60.7 65.4 C66.1 66.8 69.5 71.3 69.5 76.4 C69.5 82.3 64.6 87 58.7 87 H25" 
+    stroke="url(#fav-spine)" 
+    stroke-width="9.5" 
+    stroke-linecap="round" 
+    stroke-linejoin="round"
+  />
+
+  <!-- Counter 'X' Slash Upper -->
+  <path 
+    d="M72.5 28 L54.5 46" 
+    stroke="url(#fav-cross)" 
+    stroke-width="9.5" 
+    stroke-linecap="round" 
+  />
+
+  <!-- Counter 'X' Slash Lower -->
+  <path 
+    d="M45.5 55 L27.5 73" 
+    stroke="url(#fav-cross)" 
+    stroke-width="9.5" 
+    stroke-linecap="round" 
+  />
 </svg>

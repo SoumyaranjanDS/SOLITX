@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <!-- Background Radial Gradient -->
+    <radialGradient id="solitx-bg-glow" cx="50%" cy="50%" r="65%" fx="30%" fy="25%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="60%" stop-color="#0F1419" />
+      <stop offset="100%" stop-color="#080A0D" />
+    </radialGradient>
+
+    <!-- Primary 'S' Curve Gradient (Electric Violet to Indigo) -->
+    <linearGradient id="solitx-spine" x1="10%" y1="10%" x2="90%" y2="90%">
+      <stop offset="0%" stop-color="#A855F7" />
+      <stop offset="45%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+
+    <!-- Secondary 'X' Slash Gradient (Cyber Cyan to Vivid Lavender) -->
+    <linearGradient id="solitx-cross" x1="85%" y1="15%" x2="15%" y2="85%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#818CF8" />
+      <stop offset="100%" stop-color="#C084FC" />
+    </linearGradient>
+
+    <!-- Ambient Shadow for Interlocking Depth -->
+    <filter id="solitx-depth" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#7C3AED" flood-opacity="0.35" />
+    </filter>
+  </defs>
+
+  <!-- Premium Dark Superellipse Squircle -->
+  <rect width="100" height="100" rx="24" fill="url(#solitx-bg-glow)" />
+  <rect width="98" height="98" x="1" y="1" rx="23" stroke="rgba(255,255,255,0.12)" stroke-width="1.2" />
+
+  <!-- Monogram Mark Group -->
+  <g filter="url(#solitx-depth)">
+    <!-- Primary Fluid 'S' Ribbon -->
+    <path 
+      d="M71 25 H38 C28.6 25 21 32.6 21 42 C21 49.7 26.1 56.2 33.3 58.1 L60.7 65.4 C66.1 66.8 69.5 71.3 69.5 76.4 C69.5 82.3 64.6 87 58.7 87 H25" 
+      stroke="url(#solitx-spine)" 
+      stroke-width="8.5" 
+      stroke-linecap="round" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Counter 'X' Diagonal Slash - Upper Segment -->
+    <path 
+      d="M72.5 28 L54.5 46" 
+      stroke="url(#solitx-cross)" 
+      stroke-width="8.5" 
+      stroke-linecap="round" 
+    />
+
+    <!-- Counter 'X' Diagonal Slash - Lower Segment (Forming the 3D Weave) -->
+    <path 
+      d="M45.5 55 L27.5 73" 
+      stroke="url(#solitx-cross)" 
+      stroke-width="8.5" 
+      stroke-linecap="round" 
+    />
+  </g>
+</svg>
