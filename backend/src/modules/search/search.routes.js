@@ -8,3 +8,4 @@ const router = express.Router();
 router.get("/", optionalProtect, searchAll);
 
 export default router;
+

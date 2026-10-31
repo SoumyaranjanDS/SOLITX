@@ -50,13 +50,15 @@ app.use((req, res, next) => {
   if (isShuttingDown) {
     // Advise client/proxy to close TCP socket and fail over immediately
     res.setHeader("Connection", "close");
-    return res.status(503).json(
-      new ApiResponse(
-        503,
-        { port, pid: process.pid, shuttingDown: true },
-        "Instance is draining connections for shutdown. Please retry on peer node.",
-      ),
-    );
+    return res
+      .status(503)
+      .json(
+        new ApiResponse(
+          503,
+          { port, pid: process.pid, shuttingDown: true },
+          "Instance is draining connections for shutdown. Please retry on peer node.",
+        ),
+      );
   }
   next();
 });
@@ -68,6 +70,7 @@ import listRoutes from "./modules/lists/list.routes.js";
 import communityRoutes from "./modules/communities/community.routes.js";
 import mediaRoutes from "./modules/media/media.routes.js";
 import searchRoutes from "./modules/search/search.routes.js";
+import { getPostPreviewHtml } from "./modules/posts/post.controller.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
 
@@ -78,6 +81,9 @@ app.use("/api/v1/lists", listRoutes);
 app.use("/api/v1/communities", communityRoutes);
 app.use("/api/v1/media", mediaRoutes);
 app.use("/api/v1/search", searchRoutes);
+
+// Social Media Share Link (Generates Dynamic Open Graph Previews)
+app.get("/share/post/:id", getPostPreviewHtml);
 
 // TEMPORARY ENDPOINT FOR LOAD TESTING (DAY 8) & PAGINATION (DAY 10)
 app.get("/api/v1/test/feed/:user_id", async (req, res, next) => {
@@ -290,10 +296,15 @@ connectDB().then(() => {
 const gracefulShutdown = async (signal) => {
   if (isShuttingDown) return;
   isShuttingDown = true;
-  console.log(`\n[${signal}] Received termination signal. Initiating graceful shutdown...`);
+  console.log(
+    `\n[${signal}] Received termination signal. Initiating graceful shutdown...`,
+  );
 
   // 1. Tell Keep-Alive connections to terminate after current request
-  if (serverInstance && typeof serverInstance.closeIdleConnections === "function") {
+  if (
+    serverInstance &&
+    typeof serverInstance.closeIdleConnections === "function"
+  ) {
     serverInstance.closeIdleConnections();
   }
 
@@ -304,7 +315,9 @@ const gracefulShutdown = async (signal) => {
         console.error("[Shutdown] Error closing HTTP server listener:", err);
         process.exit(1);
       }
-      console.log("[Shutdown] HTTP listener closed. In-flight requests successfully drained.");
+      console.log(
+        "[Shutdown] HTTP listener closed. In-flight requests successfully drained.",
+      );
 
       try {
         // 3. Drain and disconnect database connection pool
@@ -317,7 +330,9 @@ const gracefulShutdown = async (signal) => {
         await redis.quit();
         console.log("[Shutdown] Redis disconnected.");
 
-        console.log("[Shutdown] All resources released cleanly. Exiting with code 0.");
+        console.log(
+          "[Shutdown] All resources released cleanly. Exiting with code 0.",
+        );
         process.exit(0);
       } catch (cleanupErr) {
         console.error("[Shutdown] Error during cleanup teardown:", cleanupErr);
@@ -330,7 +345,9 @@ const gracefulShutdown = async (signal) => {
 
   // 5. Hard failsafe timeout: Force exit after 10 seconds if connections refuse to drain
   const forceExitTimer = setTimeout(() => {
-    console.error("[Shutdown] Forced exit: pending connections took longer than 10s grace limit.");
+    console.error(
+      "[Shutdown] Forced exit: pending connections took longer than 10s grace limit.",
+    );
     process.exit(1);
   }, 10000);
   forceExitTimer.unref();

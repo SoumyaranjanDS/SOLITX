@@ -1491,3 +1491,93 @@ export const getBookmarks = async (req, res, next) => {
     next(error);
   }
 };
+
+// GET /api/v1/posts/:id/preview - Dynamic Open Graph HTML for social media crawlers
+export const getPostPreviewHtml = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const query = `
+      SELECT 
+        p.id,
+        p.content,
+        u.name as author_name,
+        u.username,
+        u.avatar_url,
+        ${MEDIA_JSON_SELECT}
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.id = $1;
+    `;
+    const result = await pool.query(query, [id]);
+    if (result.rowCount === 0) {
+      return res.redirect("https://solitx.soumya.site");
+    }
+
+    const post = result.rows[0];
+    const author = post.author_name || post.username;
+    const title = `${author} (@${post.username}) on SOLITX`;
+    const description = (post.content || "").slice(0, 240);
+    
+    // Check if post has media image
+    let imageUrl = "https://solitx.soumya.site/og-image.png";
+    if (post.media && Array.isArray(post.media) && post.media.length > 0) {
+      const firstMedia = post.media[0];
+      imageUrl = firstMedia.url_full || firstMedia.url_feed || firstMedia.url_raw || imageUrl;
+    }
+
+    const postUrl = `https://solitx.soumya.site/post/${post.id}`;
+
+    const escapeHtml = (str) =>
+      String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${escapeHtml(title)}</title>
+  <meta name="description" content="${escapeHtml(description)}">
+
+  <!-- Open Graph / WhatsApp / Facebook / LinkedIn / Discord -->
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="SOLITX">
+  <meta property="og:url" content="${escapeHtml(postUrl)}">
+  <meta property="og:title" content="${escapeHtml(title)}">
+  <meta property="og:description" content="${escapeHtml(description)}">
+  <meta property="og:image" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:alt" content="Post image on SOLITX">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@solitx">
+  <meta name="twitter:url" content="${escapeHtml(postUrl)}">
+  <meta name="twitter:title" content="${escapeHtml(title)}">
+  <meta name="twitter:description" content="${escapeHtml(description)}">
+  <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
+
+  <!-- Instant redirect for real browsers -->
+  <meta http-equiv="refresh" content="0;url=${escapeHtml(postUrl)}">
+  <script>
+    window.location.replace("${escapeHtml(postUrl)}");
+  </script>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0F1419; color: #FFFFFF; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; text-align: center; padding: 20px;">
+  <div>
+    <h2 style="margin-bottom: 8px;">SOLITX</h2>
+    <p style="color: #94A3B8;">Redirecting to post...</p>
+    <a href="${escapeHtml(postUrl)}" style="color: #A855F7; text-decoration: underline;">Click here if not redirected automatically</a>
+  </div>
+</body>
+</html>`;
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.status(200).send(html);
+  } catch (error) {
+    next(error);
+  }
+};

@@ -15,6 +15,7 @@ import {
   toggleCommentLike,
   toggleBookmark,
   getBookmarks,
+  getPostPreviewHtml,
 } from "./post.controller.js";
 import { protect, optionalProtect } from "../../middlewares/authMiddleware.js";
 
@@ -41,6 +42,7 @@ router.get("/user/:username/media", optionalProtect, (req, res, next) => {
   req.query.tab = "media";
   return getUserPosts(req, res, next);
 });
+router.get("/:id/preview", getPostPreviewHtml);
 router.get("/:id", optionalProtect, getPostById);
 router.post("/:id/view", optionalProtect, recordPostView);
 router.get("/:id/comments", optionalProtect, getComments);

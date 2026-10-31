@@ -259,3 +259,4 @@ export const searchAll = async (req, res, next) => {
     next(error);
   }
 };
+
