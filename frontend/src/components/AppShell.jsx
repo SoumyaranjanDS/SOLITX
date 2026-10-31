@@ -27,11 +27,11 @@ import { getSocket, disconnectSocket } from '../socket';
 import { getAvatarUrl } from '../utils/avatar';
 
 // ─── SOLITX Logo (Official SX Monogram) ──────────────────────────────────────
-export const SolitxLogo = ({ size = 30, className = '', color = 'currentColor' }) => (
+export const SolitxLogo = ({ size = 36, className = '', color = 'currentColor', viewBox = '195 195 864 864' }) => (
   <svg 
     width={size} 
     height={size} 
-    viewBox="0 0 1254 1254" 
+    viewBox={viewBox} 
     fill="none" 
     xmlns="http://www.w3.org/2000/svg"
     className={className}
@@ -415,11 +415,11 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
 
         {/* Logo */}
         <div
-          className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-[#F7F9F9] cursor-pointer transition-colors mb-0.5"
+          className="w-12 h-12 xl:w-[50px] xl:h-[50px] flex items-center justify-center rounded-full hover:bg-[#7C3AED]/10 text-[#0F1419] hover:text-[#7C3AED] cursor-pointer transition-all duration-150 mb-1 active:scale-95 group"
           onClick={handleGoHome}
           title="SOLITX Home"
         >
-          <SolitxLogo size={24} />
+          <SolitxLogo size={38} className="transition-transform group-hover:scale-105" />
         </div>
 
         {/* Nav */}
@@ -699,7 +699,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
             ) : (
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center mb-1">
-                  <SolitxLogo size={28} />
+                  <SolitxLogo size={34} className="text-[#0F1419]" />
                   <button onClick={() => setIsDrawerOpen(false)} className="p-2 -mr-2 text-[#0F1419] hover:bg-[#F7F9F9] rounded-full active:scale-95 transition-all">
                     <X size={20} />
                   </button>

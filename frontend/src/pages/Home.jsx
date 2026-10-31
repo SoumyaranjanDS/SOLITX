@@ -13,7 +13,7 @@ import {
   Loader2,
   AtSign
 } from 'lucide-react';
-import AppShell from '../components/AppShell';
+import AppShell, { SolitxLogo } from '../components/AppShell';
 import PostCard from '../components/PostCard';
 import OnboardingModal from '../components/OnboardingModal';
 import AuthRequiredModal from '../components/AuthRequiredModal';
@@ -282,14 +282,10 @@ const Home = () => {
               navigate('/');
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
-            className="cursor-pointer hover:opacity-90 transition-opacity"
-            title="Home"
+            className="cursor-pointer hover:opacity-80 transition-all p-1 flex items-center justify-center active:scale-95"
+            title="SOLITX Home"
           >
-            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
-              <path d="M10 22 L16 10 L22 22" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-              <circle cx="16" cy="10" r="2.5" fill="#7C3AED" />
-              <path d="M10 22 H22" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round" />
-            </svg>
+            <SolitxLogo size={36} className="text-[#0F1419] hover:text-[#7C3AED] transition-colors" />
           </div>
           <button
             onClick={() => fetchFeed()}
