@@ -16,6 +16,7 @@ import {
 import api from '../api';
 import CommentModal from './CommentModal';
 import { getAvatarUrl } from '../utils/avatar';
+import MentionText from './MentionText';
 
 // Helper to format timestamps like Twitter (e.g. 5m, 2h, Oct 12)
 export const formatRelativeTime = (timestamp) => {
@@ -355,7 +356,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
               <>
                 {cleanContent && (
                   <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-1 leading-[1.5] whitespace-pre-wrap break-words">
-                    {cleanContent}
+                    <MentionText text={cleanContent} />
                   </p>
                 )}
 

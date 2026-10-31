@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ImageIcon, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check, Loader2 } from 'lucide-react';
+import { X, ImageIcon, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check, Loader2, AtSign } from 'lucide-react';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
+import MentionDropdown, { useMentionAutocomplete } from './MentionAutocomplete';
 
 const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = null }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -13,6 +14,19 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
   // Media Upload State
   const fileInputRef = useRef(null);
   const [mediaState, setMediaState] = useState(null);
+
+  // @Mention Autocomplete State
+  const textareaRef = useRef(null);
+  const {
+    mentionState,
+    suggestions,
+    loading: mentionLoading,
+    selectedIndex,
+    checkMentionTrigger,
+    selectUser,
+    handleKeyDown: handleMentionKeyDown,
+    triggerMention,
+  } = useMentionAutocomplete({ text: content, setText: setContent, textareaRef });
 
   // Community Audience selector
   const [communities, setCommunities] = useState([]);
@@ -214,14 +228,33 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
               )}
             </div>
 
-            <textarea
-              autoFocus
-              placeholder={activeCommunity ? `Post in c/${activeCommunity.slug}...` : "What is happening?!"}
-              className="w-full text-[18px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-relaxed min-h-[110px]"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              maxLength={500}
-            />
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                autoFocus
+                placeholder={activeCommunity ? `Post in c/${activeCommunity.slug}...` : "What is happening?!"}
+                className="w-full text-[18px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-relaxed min-h-[110px]"
+                value={content}
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  setTimeout(checkMentionTrigger, 0);
+                }}
+                onKeyUp={checkMentionTrigger}
+                onClick={checkMentionTrigger}
+                onKeyDown={(e) => {
+                  handleMentionKeyDown(e);
+                }}
+                maxLength={500}
+              />
+              <MentionDropdown
+                mentionState={mentionState}
+                suggestions={suggestions}
+                loading={mentionLoading}
+                selectedIndex={selectedIndex}
+                onSelect={selectUser}
+                className="top-full left-0 mt-1"
+              />
+            </div>
 
             {/* Media Image Preview Container */}
             {mediaState && (
@@ -317,6 +350,14 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
                   title="Add photos"
                 >
                   <ImageIcon size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={triggerMention}
+                  className="p-2 rounded-full hover:bg-[#7C3AED]/10 transition-colors"
+                  title="Mention a developer (@)"
+                >
+                  <AtSign size={18} />
                 </button>
                 <button type="button" className="p-2 rounded-full hover:bg-[#7C3AED]/10 transition-colors">
                   <Smile size={18} />

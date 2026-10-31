@@ -14,7 +14,8 @@ import {
   RefreshCw,
   ArrowRight,
   ListFilter,
-  Users
+  Users,
+  AtSign
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import { formatRelativeTime } from '../components/PostCard';
@@ -79,7 +80,7 @@ const Notifications = () => {
   // Filter notifications based on tab
   const filteredNotifications = notifications.filter((n) => {
     if (activeTab === 'replies') {
-      return n.type === 'comment_reply' || n.type === 'post_comment' || n.type === 'reply';
+      return n.type === 'comment_reply' || n.type === 'post_comment' || n.type === 'reply' || n.type === 'mention';
     }
     if (activeTab === 'likes') {
       return n.type === 'post_like' || n.type === 'comment_like' || n.type === 'like';
@@ -236,6 +237,7 @@ const Notifications = () => {
               const isListAdd = notif.type === 'list_member_added';
               const isCommunityAdd = notif.type === 'community_member_added';
               const isCommunityJoin = notif.type === 'community_joined';
+              const isMention = notif.type === 'mention';
 
               // Navigation target
               const handleNotificationClick = () => {
@@ -302,6 +304,11 @@ const Notifications = () => {
                         <Users size={18} />
                       </div>
                     )}
+                    {isMention && (
+                      <div className="w-9 h-9 rounded-full bg-violet-100 text-[#7C3AED] flex items-center justify-center shadow-xs">
+                        <AtSign size={18} />
+                      </div>
+                    )}
                   </div>
 
                   {/* Body Content */}
@@ -341,6 +348,7 @@ const Notifications = () => {
                           {isListAdd && `added you to the list "${notif.message_content || 'Curated List'}"`}
                           {isCommunityAdd && `added you to community "${notif.message_content || 'Developer Community'}"`}
                           {isCommunityJoin && `joined your community "${notif.message_content || 'Developer Community'}"`}
+                          {isMention && 'mentioned you in a post'}
                         </span>
                       </div>
 

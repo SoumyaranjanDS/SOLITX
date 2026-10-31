@@ -10,7 +10,8 @@ import {
   RefreshCw,
   X,
   Check,
-  Loader2
+  Loader2,
+  AtSign
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
@@ -19,6 +20,7 @@ import AuthRequiredModal from '../components/AuthRequiredModal';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
+import MentionDropdown, { useMentionAutocomplete } from '../components/MentionAutocomplete';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -68,6 +70,19 @@ const Home = () => {
   const [postText, setPostText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [postError, setPostError] = useState('');
+
+  // @Mention Autocomplete State
+  const textareaRef = useRef(null);
+  const {
+    mentionState,
+    suggestions,
+    loading: mentionLoading,
+    selectedIndex,
+    checkMentionTrigger,
+    selectUser,
+    handleKeyDown: handleMentionKeyDown,
+    triggerMention,
+  } = useMentionAutocomplete({ text: postText, setText: setPostText, textareaRef });
   
   // Media Upload State
   const fileInputRef = useRef(null);
@@ -342,14 +357,33 @@ const Home = () => {
             />
           </div>
           <div className="flex-1">
-            <textarea
-              placeholder="What is happening?!"
-              className="w-full text-[17px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-snug pt-2 min-h-[60px]"
-              value={postText}
-              onChange={e => setPostText(e.target.value)}
-              maxLength={500}
-              rows={postText.length > 70 ? 3 : 2}
-            />
+            <div className="relative">
+              <textarea
+                ref={textareaRef}
+                placeholder="What is happening?!"
+                className="w-full text-[17px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-snug pt-2 min-h-[60px]"
+                value={postText}
+                onChange={e => {
+                  setPostText(e.target.value);
+                  setTimeout(checkMentionTrigger, 0);
+                }}
+                onKeyUp={checkMentionTrigger}
+                onClick={checkMentionTrigger}
+                onKeyDown={(e) => {
+                  handleMentionKeyDown(e);
+                }}
+                maxLength={500}
+                rows={postText.length > 70 ? 3 : 2}
+              />
+              <MentionDropdown
+                mentionState={mentionState}
+                suggestions={suggestions}
+                loading={mentionLoading}
+                selectedIndex={selectedIndex}
+                onSelect={selectUser}
+                className="top-full left-0 mt-1"
+              />
+            </div>
 
             {/* Media Image Preview Container */}
             {mediaState && (
@@ -442,6 +476,14 @@ const Home = () => {
                   title="Add photos"
                 >
                   <ImageIcon size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={triggerMention}
+                  className="p-2 rounded-full hover:bg-[#7C3AED]/10 transition-colors"
+                  title="Mention a developer (@)"
+                >
+                  <AtSign size={17} />
                 </button>
                 <button type="button" className="p-2 rounded-full hover:bg-[#7C3AED]/10 transition-colors"><BarChart2 size={17} /></button>
                 <button type="button" className="p-2 rounded-full hover:bg-[#7C3AED]/10 transition-colors"><Smile size={17} /></button>

@@ -24,6 +24,8 @@ import AuthRequiredModal from '../components/AuthRequiredModal';
 import { formatViews } from '../components/PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import MentionText from '../components/MentionText';
+import MentionDropdown, { useMentionAutocomplete } from '../components/MentionAutocomplete';
 
 // YouTube-style natural English relative timestamp
 export const formatYouTubeTime = (timestamp) => {
@@ -119,6 +121,18 @@ const PostDetail = () => {
   const [mainReplyText, setMainReplyText] = useState('');
   const [isSubmittingMainReply, setIsSubmittingMainReply] = useState(false);
   const [mainReplyError, setMainReplyError] = useState('');
+
+  // @Mention Autocomplete for main reply
+  const mainReplyTextareaRef = useRef(null);
+  const {
+    mentionState: mainMentionState,
+    suggestions: mainSuggestions,
+    loading: mainMentionLoading,
+    selectedIndex: mainSelectedIndex,
+    checkMentionTrigger: checkMainMention,
+    selectUser: selectMainUser,
+    handleKeyDown: handleMainMentionKeyDown,
+  } = useMentionAutocomplete({ text: mainReplyText, setText: setMainReplyText, textareaRef: mainReplyTextareaRef });
 
   // YouTube Thread State: expanded reply drawers & active inline reply composer
   const [expandedThreads, setExpandedThreads] = useState(new Set());
@@ -584,7 +598,7 @@ const PostDetail = () => {
                 </div>
               ) : (
                 <p className="text-[18px] sm:text-[20px] text-[#0F1419] leading-relaxed my-3 whitespace-pre-wrap break-words">
-                  {post.content}
+                  <MentionText text={post.content} />
                 </p>
               )}
 
@@ -761,15 +775,32 @@ const PostDetail = () => {
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 relative">
                     <textarea
+                      ref={mainReplyTextareaRef}
                       id="main-reply-input"
                       placeholder="Add a comment..."
                       value={mainReplyText}
-                      onChange={(e) => setMainReplyText(e.target.value)}
+                      onChange={(e) => {
+                        setMainReplyText(e.target.value);
+                        setTimeout(checkMainMention, 0);
+                      }}
+                      onKeyUp={checkMainMention}
+                      onClick={checkMainMention}
+                      onKeyDown={(e) => {
+                        handleMainMentionKeyDown(e);
+                      }}
                       maxLength={500}
                       rows={2}
                       className="w-full text-[15px] sm:text-[16px] text-[#0F1419] placeholder:text-[#536471] border-b border-[#EFF3F4] focus:border-[#0F1419] resize-none outline-none leading-snug pb-2 transition-colors"
+                    />
+                    <MentionDropdown
+                      mentionState={mainMentionState}
+                      suggestions={mainSuggestions}
+                      loading={mainMentionLoading}
+                      selectedIndex={mainSelectedIndex}
+                      onSelect={selectMainUser}
+                      className="top-full left-0 mt-1"
                     />
 
                     {mainReplyError && (
@@ -909,7 +940,7 @@ const PostDetail = () => {
 
                           {/* Comment Content */}
                           <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-1 leading-relaxed whitespace-pre-wrap break-words">
-                            {comment.content}
+                            <MentionText text={comment.content} />
                           </p>
 
                           {/* YouTube-Style Actions Row: Like + Reply */}
@@ -1063,16 +1094,7 @@ const PostDetail = () => {
 
                                           {/* Nested Content with @mention highlight */}
                                           <p className="text-[13px] sm:text-[14px] text-[#0F1419] mt-0.5 leading-relaxed whitespace-pre-wrap break-words">
-                                            {child.content.startsWith('@') ? (
-                                              <>
-                                                <span className="font-bold text-[#1D9BF0]">
-                                                  {child.content.split(' ')[0]}{' '}
-                                                </span>
-                                                {child.content.split(' ').slice(1).join(' ')}
-                                              </>
-                                            ) : (
-                                              child.content
-                                            )}
+                                            <MentionText text={child.content} />
                                           </p>
 
                                           {/* Nested Actions: Like + Reply */}

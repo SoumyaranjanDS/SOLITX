@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Trash2, MessageCircle } from 'lucide-react';
 import { formatRelativeTime } from './PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import MentionText from './MentionText';
+import MentionDropdown, { useMentionAutocomplete } from './MentionAutocomplete';
 
 const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -11,6 +13,18 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
   const [replyText, setReplyText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // @Mention Autocomplete State
+  const textareaRef = useRef(null);
+  const {
+    mentionState,
+    suggestions,
+    loading: mentionLoading,
+    selectedIndex,
+    checkMentionTrigger,
+    selectUser,
+    handleKeyDown: handleMentionKeyDown,
+  } = useMentionAutocomplete({ text: replyText, setText: setReplyText, textareaRef });
 
   // Fetch comments when modal opens
   useEffect(() => {
@@ -121,7 +135,7 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
                 <span className="text-[#536471] text-[14px]">@{post.username} · {formatRelativeTime(post.created_at)}</span>
               </div>
               <p className="text-[15px] text-[#0F1419] mt-1 leading-relaxed whitespace-pre-wrap break-words">
-                {post.content}
+                <MentionText text={post.content} />
               </p>
               <p className="text-[13px] text-[#536471] mt-2">
                 Replying to <span className="text-[#7C3AED] font-medium">@{post.username}</span>
@@ -138,14 +152,31 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col relative">
               <textarea
+                ref={textareaRef}
                 autoFocus
                 placeholder="Post your reply"
                 className="w-full text-[16px] text-[#0F1419] placeholder:text-[#536471] border-none focus:ring-0 resize-none outline-none leading-snug min-h-[70px] pt-1"
                 value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
+                onChange={(e) => {
+                  setReplyText(e.target.value);
+                  setTimeout(checkMentionTrigger, 0);
+                }}
+                onKeyUp={checkMentionTrigger}
+                onClick={checkMentionTrigger}
+                onKeyDown={(e) => {
+                  handleMentionKeyDown(e);
+                }}
                 maxLength={500}
+              />
+              <MentionDropdown
+                mentionState={mentionState}
+                suggestions={suggestions}
+                loading={mentionLoading}
+                selectedIndex={selectedIndex}
+                onSelect={selectUser}
+                className="top-full left-0 mt-1"
               />
 
               {error && (
@@ -230,7 +261,7 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
                           )}
                         </div>
                         <p className="text-[14px] text-[#0F1419] mt-0.5 leading-relaxed whitespace-pre-wrap break-words">
-                          {comment.content}
+                          <MentionText text={comment.content} />
                         </p>
                       </div>
                     </div>

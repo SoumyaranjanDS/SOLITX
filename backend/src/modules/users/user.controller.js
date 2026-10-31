@@ -392,6 +392,7 @@ export const getSuggestedUsers = async (req, res, next) => {
         u.username, 
         u.name,
         u.bio,
+        u.avatar_url,
         ${isFollowingSql}
       FROM users u
       ${whereSql}
@@ -523,6 +524,7 @@ export const getNotifications = async (req, res, next) => {
         n.message_content,
         u.username as actor_username,
         u.name as actor_name,
+        u.avatar_url as actor_avatar_url,
         p.content as post_content,
         c.content as comment_content
       FROM notifications n

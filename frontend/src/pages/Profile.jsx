@@ -26,6 +26,7 @@ import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import ImageCropModal from '../components/ImageCropModal';
+import MentionText from '../components/MentionText';
 
 const TABS = ['Posts', 'Replies', 'Media', 'Likes'];
 
@@ -112,7 +113,7 @@ const ProfileReplyCard = ({ reply, onNavigate }) => {
 
           {/* Reply Content */}
           <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-2 leading-[1.5] whitespace-pre-wrap break-words">
-            {reply.content}
+            <MentionText text={reply.content} />
           </p>
 
           {/* Action Row */}

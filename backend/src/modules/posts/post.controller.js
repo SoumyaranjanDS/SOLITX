@@ -136,6 +136,31 @@ export const createPost = async (req, res, next) => {
       media: attachedMedia,
     };
 
+    // Dispatch mention notifications (@username in post)
+    const mentionMatches = content.match(/@([a-zA-Z0-9_]{3,20})/g);
+    if (mentionMatches && mentionMatches.length > 0) {
+      const rawUsernames = [...new Set(mentionMatches.map((m) => m.slice(1).toLowerCase()))];
+      pool
+        .query(
+          `SELECT id, username FROM users WHERE LOWER(username) = ANY($1::text[]) AND id != $2`,
+          [rawUsernames, userId]
+        )
+        .then((userRes) => {
+          for (const targetUser of userRes.rows) {
+            createNotification({
+              recipientId: targetUser.id,
+              actorId: userId,
+              type: "mention",
+              postId: post.id,
+              messageContent: content.slice(0, 140),
+            }).catch((err) =>
+              console.error("[MentionNotification] Error:", err.message)
+            );
+          }
+        })
+        .catch((err) => console.error("[MentionLookup] Error:", err.message));
+    }
+
     return res
       .status(201)
       .json(new ApiResponse(201, { post: fullPost }, "Post created successfully"));
@@ -1161,6 +1186,37 @@ export const createComment = async (req, res, next) => {
         commentId: comment.id,
         messageContent: content.trim(),
       });
+    }
+
+    // Dispatch mention notifications (@username in comments)
+    const commentMentions = content.match(/@([a-zA-Z0-9_]{3,20})/g);
+    if (commentMentions && commentMentions.length > 0) {
+      const rawUsernames = [...new Set(commentMentions.map((m) => m.slice(1).toLowerCase()))];
+      pool
+        .query(
+          `SELECT id, username FROM users WHERE LOWER(username) = ANY($1::text[]) AND id != $2`,
+          [rawUsernames, userId]
+        )
+        .then((userRes) => {
+          for (const targetUser of userRes.rows) {
+            if (
+              targetUser.id !== postCheck.rows[0].user_id &&
+              targetUser.id !== parentAuthorId
+            ) {
+              createNotification({
+                recipientId: targetUser.id,
+                actorId: userId,
+                type: "mention",
+                postId,
+                commentId: comment.id,
+                messageContent: content.slice(0, 140),
+              }).catch((err) =>
+                console.error("[CommentMentionNotification] Error:", err.message)
+              );
+            }
+          }
+        })
+        .catch((err) => console.error("[CommentMentionLookup] Error:", err.message));
     }
 
     // Fetch author info
