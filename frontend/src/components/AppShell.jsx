@@ -19,7 +19,8 @@ import {
   MessageCircle,
   CornerDownRight,
   ThumbsUp,
-  UserPlus
+  UserPlus,
+  ArrowRight
 } from 'lucide-react';
 import ComposeModal from './ComposeModal';
 import api from '../api';
@@ -205,12 +206,74 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
   const toastTimerRef = useRef(null);
 
   const [sidebarSearch, setSidebarSearch] = useState('');
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [searchResults, setSearchResults] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchContainerRef = useRef(null);
+
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [isComposeModalOpen, setIsComposeModalOpen] = useState(false);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [trendingTopics, setTrendingTopics] = useState([]);
   const [loadingTrending, setLoadingTrending] = useState(true);
+
+  // Live debounced search for right sidebar quick dropdown
+  useEffect(() => {
+    const q = sidebarSearch.trim();
+    if (!q) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get('/search', { params: { q, limit: 3 } });
+        setSearchResults(res.data?.data || null);
+      } catch (err) {
+        console.error('Sidebar quick search error:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [sidebarSearch]);
+
+  // Click outside to dismiss search dropdown
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setShowSearchDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Global keyboard shortcut '/' to focus search & Escape to dismiss
+  useEffect(() => {
+    const handleGlobalShortcuts = (e) => {
+      if (
+        e.key === '/' &&
+        !['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) &&
+        !document.activeElement?.isContentEditable
+      ) {
+        e.preventDefault();
+        const searchInput = document.getElementById('global-search-input');
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+          setShowSearchDropdown(true);
+        }
+      }
+      if (e.key === 'Escape') {
+        setShowSearchDropdown(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, []);
 
   const showToast = (notif) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -494,27 +557,268 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
           <aside className="hidden lg:block w-[360px] pl-8 pt-3 flex-shrink-0">
             <div className="sticky top-3 flex flex-col gap-4">
 
-              {/* Search */}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (sidebarSearch.trim()) {
-                    navigate(`/explore?q=${encodeURIComponent(sidebarSearch.trim())}`);
-                  } else {
-                    navigate('/explore');
-                  }
-                }}
-                className="flex items-center gap-3 bg-[#EFF3F4] hover:bg-[#E7ECF0] border border-transparent focus-within:bg-white focus-within:border-[#7C3AED] rounded-full px-4 py-2.5 transition-all"
-              >
-                <Search size={18} className="text-[#536471] flex-shrink-0" />
-                <input
-                  type="text"
-                  placeholder="Search SOLITX"
-                  value={sidebarSearch}
-                  onChange={(e) => setSidebarSearch(e.target.value)}
-                  className="bg-transparent border-none focus:outline-none w-full text-[#0F1419] placeholder:text-[#536471] text-[15px]"
-                />
-              </form>
+              {/* Search with Live Multi-Entity Autocomplete */}
+              <div ref={searchContainerRef} className="relative z-30">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (sidebarSearch.trim()) {
+                      setShowSearchDropdown(false);
+                      navigate(`/explore?q=${encodeURIComponent(sidebarSearch.trim())}`);
+                    } else {
+                      navigate('/explore');
+                    }
+                  }}
+                  className="flex items-center gap-3 bg-[#EFF3F4] hover:bg-[#E7ECF0] border border-transparent focus-within:bg-white focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/20 rounded-full px-4 py-2.5 transition-all shadow-sm"
+                >
+                  <Search size={18} className="text-[#536471] flex-shrink-0" />
+                  <input
+                    id="global-search-input"
+                    type="text"
+                    placeholder="Search SOLITX (press /)"
+                    value={sidebarSearch}
+                    onFocus={() => {
+                      if (sidebarSearch.trim()) setShowSearchDropdown(true);
+                    }}
+                    onChange={(e) => {
+                      setSidebarSearch(e.target.value);
+                      if (!showSearchDropdown) setShowSearchDropdown(true);
+                    }}
+                    className="bg-transparent border-none focus:outline-none w-full text-[#0F1419] placeholder:text-[#536471] text-[15px]"
+                  />
+                  {sidebarSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSidebarSearch('');
+                        setSearchResults(null);
+                        setShowSearchDropdown(false);
+                      }}
+                      className="p-1 rounded-full text-[#536471] hover:text-[#0F1419] hover:bg-[#CFD9DE]/50 transition-colors"
+                      title="Clear search"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </form>
+
+                {/* Quick Search Autocomplete Dropdown */}
+                {showSearchDropdown && sidebarSearch.trim() && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_12px_36px_rgba(0,0,0,0.12)] border border-[#EFF3F4] overflow-hidden divide-y divide-[#EFF3F4] animate-in fade-in zoom-in-95 duration-150 max-h-[480px] overflow-y-auto">
+                    
+                    {/* Search for query action */}
+                    <div
+                      onMouseDown={() => {
+                        setShowSearchDropdown(false);
+                        navigate(`/explore?q=${encodeURIComponent(sidebarSearch.trim())}`);
+                      }}
+                      className="p-3 hover:bg-[#F7F9F9] cursor-pointer flex items-center gap-3 transition-colors text-[#0F1419]"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-[#EFF3F4] flex items-center justify-center text-[#536471] flex-shrink-0">
+                        <Search size={15} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[14px] text-[#536471] truncate">
+                          Search for <span className="font-bold text-[#0F1419]">"{sidebarSearch.trim()}"</span>
+                        </p>
+                      </div>
+                      <ArrowRight size={14} className="text-[#536471]" />
+                    </div>
+
+                    {/* Direct Account jump if starts with @ */}
+                    {sidebarSearch.trim().startsWith('@') && (
+                      <div
+                        onMouseDown={() => {
+                          setShowSearchDropdown(false);
+                          navigate(`/profile/${sidebarSearch.trim().replace(/^@/, '')}`);
+                        }}
+                        className="p-3 hover:bg-purple-50/60 cursor-pointer flex items-center gap-3 transition-colors text-[#0F1419]"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-[#7C3AED]/10 flex items-center justify-center text-[#7C3AED] flex-shrink-0">
+                          <User size={15} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[14px] font-semibold text-[#7C3AED] truncate">
+                            Go to @{sidebarSearch.trim().replace(/^@/, '')}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Loading spinner */}
+                    {isSearching && !searchResults && (
+                      <div className="p-4 text-center text-[13px] text-[#536471] flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
+                        <span>Searching SOLITX...</span>
+                      </div>
+                    )}
+
+                    {/* People Results */}
+                    {searchResults?.users?.length > 0 && (
+                      <div>
+                        <div className="px-3.5 py-1.5 bg-[#F7F9F9] text-[11px] font-extrabold text-[#536471] uppercase tracking-wider flex items-center gap-1.5">
+                          <User size={12} className="text-[#7C3AED]" />
+                          <span>People</span>
+                        </div>
+                        <div className="divide-y divide-[#EFF3F4]/60">
+                          {searchResults.users.map((u) => (
+                            <div
+                              key={u.id}
+                              onMouseDown={() => {
+                                setShowSearchDropdown(false);
+                                navigate(`/profile/${u.username}`);
+                              }}
+                              className="px-3.5 py-2.5 hover:bg-[#F7F9F9] cursor-pointer flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-9 h-9 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                <img src={getAvatarUrl(u)} alt={u.username} className="w-full h-full object-cover" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[14px] font-bold text-[#0F1419] truncate leading-tight">
+                                  {u.name || u.username}
+                                </p>
+                                <p className="text-[12px] text-[#536471] truncate leading-tight">
+                                  @{u.username}
+                                </p>
+                              </div>
+                              {u.followers_count !== undefined && (
+                                <span className="text-[11px] text-[#536471] bg-[#EFF3F4] px-2 py-0.5 rounded-full flex-shrink-0 font-medium">
+                                  {u.followers_count} {u.followers_count === 1 ? 'follower' : 'followers'}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Communities Results */}
+                    {searchResults?.communities?.length > 0 && (
+                      <div>
+                        <div className="px-3.5 py-1.5 bg-[#F7F9F9] text-[11px] font-extrabold text-[#536471] uppercase tracking-wider flex items-center gap-1.5">
+                          <Users size={12} className="text-[#7C3AED]" />
+                          <span>Communities</span>
+                        </div>
+                        <div className="divide-y divide-[#EFF3F4]/60">
+                          {searchResults.communities.map((c) => (
+                            <div
+                              key={c.id}
+                              onMouseDown={() => {
+                                setShowSearchDropdown(false);
+                                navigate(`/community/${c.slug || c.id}`);
+                              }}
+                              className="px-3.5 py-2.5 hover:bg-[#F7F9F9] cursor-pointer flex items-center gap-3 transition-colors"
+                            >
+                              <div className={`w-9 h-9 rounded-xl bg-gradient-to-tr ${c.banner_gradient || 'from-purple-600 to-indigo-600'} flex items-center justify-center text-white font-black text-sm flex-shrink-0 shadow-sm`}>
+                                {c.name?.charAt(0)?.toUpperCase() || 'C'}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[14px] font-bold text-[#0F1419] truncate leading-tight">
+                                  {c.name}
+                                </p>
+                                <p className="text-[12px] text-[#536471] truncate leading-tight">
+                                  {c.members_count || 0} {(c.members_count === 1) ? 'member' : 'members'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lists Results */}
+                    {searchResults?.lists?.length > 0 && (
+                      <div>
+                        <div className="px-3.5 py-1.5 bg-[#F7F9F9] text-[11px] font-extrabold text-[#536471] uppercase tracking-wider flex items-center gap-1.5">
+                          <List size={12} className="text-[#7C3AED]" />
+                          <span>Lists</span>
+                        </div>
+                        <div className="divide-y divide-[#EFF3F4]/60">
+                          {searchResults.lists.map((l) => (
+                            <div
+                              key={l.id}
+                              onMouseDown={() => {
+                                setShowSearchDropdown(false);
+                                navigate(`/lists/${l.id}`);
+                              }}
+                              className="px-3.5 py-2.5 hover:bg-[#F7F9F9] cursor-pointer flex items-center gap-3 transition-colors"
+                            >
+                              <div className="w-9 h-9 rounded-xl bg-[#EFF3F4] text-[#7C3AED] flex items-center justify-center flex-shrink-0">
+                                <List size={16} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[14px] font-bold text-[#0F1419] truncate leading-tight">
+                                  {l.name}
+                                </p>
+                                <p className="text-[12px] text-[#536471] truncate leading-tight">
+                                  by @{l.creator_username}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Posts Results */}
+                    {searchResults?.posts?.length > 0 && (
+                      <div>
+                        <div className="px-3.5 py-1.5 bg-[#F7F9F9] text-[11px] font-extrabold text-[#536471] uppercase tracking-wider flex items-center gap-1.5">
+                          <MessageCircle size={12} className="text-[#7C3AED]" />
+                          <span>Posts</span>
+                        </div>
+                        <div className="divide-y divide-[#EFF3F4]/60">
+                          {searchResults.posts.map((p) => (
+                            <div
+                              key={p.id}
+                              onMouseDown={() => {
+                                setShowSearchDropdown(false);
+                                navigate(`/post/${p.id}`);
+                              }}
+                              className="px-3.5 py-2.5 hover:bg-[#F7F9F9] cursor-pointer transition-colors"
+                            >
+                              <div className="flex items-center gap-2 mb-1">
+                                <div className="w-5 h-5 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                  <img src={getAvatarUrl(p)} alt={p.username} className="w-full h-full object-cover" />
+                                </div>
+                                <span className="text-[12px] font-bold text-[#0F1419] truncate">{p.author_name || p.username}</span>
+                                <span className="text-[12px] text-[#536471] truncate">@{p.username}</span>
+                              </div>
+                              <p className="text-[13px] text-[#0F1419] line-clamp-2 leading-snug">
+                                {p.content}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No matches notice */}
+                    {!isSearching &&
+                      searchResults &&
+                      searchResults.users?.length === 0 &&
+                      searchResults.communities?.length === 0 &&
+                      searchResults.lists?.length === 0 &&
+                      searchResults.posts?.length === 0 && (
+                        <div className="p-4 text-center text-[#536471]">
+                          <p className="text-[13px] font-semibold text-[#0F1419]">No quick matches found</p>
+                          <p className="text-[12px] mt-0.5">Press Enter to run a full search on Explore</p>
+                        </div>
+                    )}
+
+                    {/* Footer: See all results */}
+                    <div
+                      onMouseDown={() => {
+                        setShowSearchDropdown(false);
+                        navigate(`/explore?q=${encodeURIComponent(sidebarSearch.trim())}`);
+                      }}
+                      className="px-4 py-2.5 bg-[#F7F9F9] hover:bg-[#E7ECF0] text-center text-[13px] font-bold text-[#7C3AED] cursor-pointer transition-colors"
+                    >
+                      See all results for "{sidebarSearch.trim()}"
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Who to follow */}
               <div className="bg-[#F7F9F9] rounded-2xl overflow-hidden">

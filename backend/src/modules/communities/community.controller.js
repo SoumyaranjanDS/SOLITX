@@ -8,6 +8,15 @@ import { MEDIA_JSON_SELECT } from "../posts/post.controller.js";
 export const getCommunities = async (req, res, next) => {
   try {
     const currentUserId = req.user?.id || null;
+    const search = (req.query.q || req.query.search || "").trim();
+
+    let whereClause = "";
+    const params = [currentUserId];
+
+    if (search) {
+      params.push(`%${search}%`);
+      whereClause = `WHERE (c.name ILIKE $2 OR c.description ILIKE $2 OR c.slug ILIKE $2 OR u.username ILIKE $2)`;
+    }
 
     const query = `
       SELECT 
@@ -25,11 +34,12 @@ export const getCommunities = async (req, res, next) => {
       FROM communities c
       JOIN users u ON c.creator_id = u.id
       LEFT JOIN community_members cm ON c.id = cm.community_id
+      ${whereClause}
       GROUP BY c.id, u.username, u.name
       ORDER BY members_count DESC, c.created_at DESC;
     `;
 
-    const result = await pool.query(query, [currentUserId]);
+    const result = await pool.query(query, params);
     return res.status(200).json(
       new ApiResponse(200, { communities: result.rows }, "Communities fetched successfully")
     );

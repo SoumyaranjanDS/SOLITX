@@ -120,10 +120,16 @@ const Communities = () => {
 
   const filteredCommunities = communities
     .filter((c) => (activeTab === 'joined' ? c.is_joined : true))
-    .filter((c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.description && c.description.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    .filter((c) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim().replace(/^@/, '');
+      return (
+        c.name?.toLowerCase().includes(q) ||
+        (c.description && c.description.toLowerCase().includes(q)) ||
+        (c.slug && c.slug.toLowerCase().includes(q)) ||
+        (c.creator_username && c.creator_username.toLowerCase().includes(q))
+      );
+    });
 
   return (
     <AppShell rightSidebar={true}>
@@ -150,15 +156,25 @@ const Communities = () => {
 
           {/* Search bar */}
           <div className="px-4 pb-2.5">
-            <div className="relative">
-              <Search size={16} className="absolute left-3.5 top-3 text-[#536471]" />
+            <div className="relative flex items-center">
+              <Search size={16} className="absolute left-3.5 top-3 text-[#536471] pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search communities..."
+                placeholder="Search communities by name, topic, or @creator..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-[#EFF3F4] text-[#0F1419] rounded-full text-[14px] outline-none focus:border-[#7C3AED] border border-transparent focus:bg-white transition-all shadow-inner"
+                className="w-full pl-9 pr-9 py-2 bg-[#EFF3F4] text-[#0F1419] rounded-full text-[14px] outline-none focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 border border-transparent focus:bg-white transition-all shadow-inner"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 p-1 rounded-full text-[#536471] hover:text-[#0F1419] hover:bg-[#CFD9DE]/50 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           </div>
 

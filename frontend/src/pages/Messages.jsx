@@ -359,7 +359,7 @@ const Messages = () => {
 
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
-    const q = conversationFilter.toLowerCase().trim();
+    const q = conversationFilter.toLowerCase().trim().replace(/^@/, '');
     if (!q) return true;
     return (
       c.partner_username?.toLowerCase().includes(q) ||
@@ -782,7 +782,10 @@ const Messages = () => {
 
             <div className="flex-1 overflow-y-auto mt-3 divide-y divide-[#EFF3F4]">
               {suggestedUsers
-                .filter((u) => u.username.toLowerCase().includes(searchUserQuery.toLowerCase()))
+                .filter((u) => {
+                  const q = searchUserQuery.toLowerCase().trim().replace(/^@/, '');
+                  return u.username.toLowerCase().includes(q) || (u.name && u.name.toLowerCase().includes(q));
+                })
                 .map((u) => {
                   const isUserActive = onlineUsers.has(u.username?.toLowerCase());
                   return (

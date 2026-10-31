@@ -222,7 +222,9 @@ export const getFeed = async (req, res, next) => {
     // Search query support for Explore & Search bar
     const search = (req.query.q || req.query.search || req.query.tag || '').trim();
     if (search) {
+      const cleanSearch = search.replace(/^@/, '').trim();
       const searchParam = `%${search}%`;
+      const cleanParam = `%${cleanSearch}%`;
       const sQuery = currentUserId ? `
         SELECT 
           p.id,
@@ -248,9 +250,9 @@ export const getFeed = async (req, res, next) => {
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
-        WHERE p.content ILIKE $2 OR u.username ILIKE $2 OR u.name ILIKE $2
+        WHERE p.content ILIKE $2 OR p.content ILIKE $3 OR u.username ILIKE $3 OR u.name ILIKE $3
         ORDER BY p.created_at DESC
-        LIMIT $3;
+        LIMIT $4;
       ` : `
         SELECT 
           p.id,
@@ -276,11 +278,11 @@ export const getFeed = async (req, res, next) => {
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
-        WHERE p.content ILIKE $1 OR u.username ILIKE $1 OR u.name ILIKE $1
+        WHERE p.content ILIKE $1 OR p.content ILIKE $2 OR u.username ILIKE $2 OR u.name ILIKE $2
         ORDER BY p.created_at DESC
-        LIMIT $2;
+        LIMIT $3;
       `;
-      const sParams = currentUserId ? [currentUserId, searchParam, limit] : [searchParam, limit];
+      const sParams = currentUserId ? [currentUserId, searchParam, cleanParam, limit] : [searchParam, cleanParam, limit];
       const sResult = await pool.query(sQuery, sParams);
       return res.status(200).json(
         new ApiResponse(200, { posts: sResult.rows, nextCursor: null, count: sResult.rowCount }, "Search results fetched successfully")

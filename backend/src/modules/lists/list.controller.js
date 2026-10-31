@@ -8,6 +8,15 @@ import { MEDIA_JSON_SELECT } from "../posts/post.controller.js";
 export const getLists = async (req, res, next) => {
   try {
     const currentUserId = req.user?.id || null;
+    const search = (req.query.q || req.query.search || "").trim();
+
+    let searchFilter = "";
+    const params = [currentUserId];
+
+    if (search) {
+      params.push(`%${search}%`);
+      searchFilter = `AND (l.name ILIKE $2 OR l.description ILIKE $2 OR u.username ILIKE $2)`;
+    }
 
     const query = `
       SELECT 
@@ -27,12 +36,13 @@ export const getLists = async (req, res, next) => {
       JOIN users u ON l.creator_id = u.id
       LEFT JOIN list_members lm ON l.id = lm.list_id
       LEFT JOIN list_followers lf ON l.id = lf.list_id
-      WHERE l.is_private = false OR l.creator_id = $1
+      WHERE (l.is_private = false OR l.creator_id = $1)
+      ${searchFilter}
       GROUP BY l.id, u.username, u.name
       ORDER BY l.created_at DESC;
     `;
 
-    const result = await pool.query(query, [currentUserId]);
+    const result = await pool.query(query, params);
     return res.status(200).json(
       new ApiResponse(200, { lists: result.rows }, "Lists fetched successfully")
     );

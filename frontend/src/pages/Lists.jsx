@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { List as ListIcon, PlusCircle, Users, Lock, Pin, Trash2, X, RefreshCw } from 'lucide-react';
+import { List as ListIcon, PlusCircle, Users, Lock, Pin, Trash2, X, RefreshCw, Search } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import api from '../api';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -8,6 +8,7 @@ import { redirectToAuth } from '../utils/authRedirect';
 const Lists = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('discover'); // 'discover' | 'your' | 'pinned'
+  const [searchQuery, setSearchQuery] = useState('');
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -146,11 +147,21 @@ const Lists = () => {
     }
   };
 
-  const displayedLists = lists.filter((l) => {
-    if (activeTab === 'pinned') return l.is_pinned;
-    if (activeTab === 'your') return l.is_creator || l.is_following;
-    return true; // 'discover'
-  });
+  const displayedLists = lists
+    .filter((l) => {
+      if (activeTab === 'pinned') return l.is_pinned;
+      if (activeTab === 'your') return l.is_creator || l.is_following;
+      return true; // 'discover'
+    })
+    .filter((l) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim().replace(/^@/, '');
+      return (
+        l.name?.toLowerCase().includes(q) ||
+        (l.description && l.description.toLowerCase().includes(q)) ||
+        (l.creator_username && l.creator_username.toLowerCase().includes(q))
+      );
+    });
 
   return (
     <AppShell rightSidebar={true}>
@@ -173,6 +184,30 @@ const Lists = () => {
               <PlusCircle size={16} />
               <span>Create List</span>
             </button>
+          </div>
+
+          {/* Search bar */}
+          <div className="px-4 pb-2.5">
+            <div className="relative flex items-center">
+              <Search size={16} className="absolute left-3.5 top-3 text-[#536471] pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search lists by name, description, or @creator..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-9 py-2 bg-[#EFF3F4] text-[#0F1419] rounded-full text-[14px] outline-none focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 border border-transparent focus:bg-white transition-all shadow-inner"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 p-1 rounded-full text-[#536471] hover:text-[#0F1419] hover:bg-[#CFD9DE]/50 transition-colors"
+                  title="Clear search"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Tabs */}
@@ -218,28 +253,41 @@ const Lists = () => {
               <ListIcon size={26} />
             </div>
             <h3 className="text-[19px] font-bold text-[#0F1419]">
-              {activeTab === 'pinned'
+              {searchQuery
+                ? 'No lists found matching your search'
+                : activeTab === 'pinned'
                 ? 'No pinned lists yet'
                 : activeTab === 'your'
                 ? 'You haven’t created or followed any lists yet'
                 : 'No lists created yet'}
             </h3>
             <p className="text-[14px] text-[#536471] max-w-sm mx-auto mt-1 mb-5">
-              {activeTab === 'pinned'
+              {searchQuery
+                ? 'Try searching with a different keyword, list name, or @creator.'
+                : activeTab === 'pinned'
                 ? 'Pin your favorite developer lists to make them readily accessible.'
                 : activeTab === 'your'
                 ? 'Create custom lists to group the developers and topics you care about most.'
                 : 'Be the first developer to create a curated list on SOLITX.'}
             </p>
-            <button
-              onClick={() => {
-                if (!user) redirectToAuth(navigate, '/lists');
-                else setShowCreateModal(true);
-              }}
-              className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full shadow-md active:scale-95 transition-all"
-            >
-              Create a List
-            </button>
+            {searchQuery ? (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="px-6 py-2.5 bg-[#0F1419] hover:bg-[#272C30] text-white font-bold text-[14px] rounded-full shadow-md active:scale-95 transition-all"
+              >
+                Clear Search
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (!user) redirectToAuth(navigate, '/lists');
+                  else setShowCreateModal(true);
+                }}
+                className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full shadow-md active:scale-95 transition-all"
+              >
+                Create a List
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-[#EFF3F4]">
