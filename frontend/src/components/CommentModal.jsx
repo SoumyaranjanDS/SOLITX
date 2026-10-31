@@ -5,6 +5,7 @@ import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionText from './MentionText';
 import MentionDropdown, { useMentionAutocomplete } from './MentionAutocomplete';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
   const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -52,6 +53,12 @@ const CommentModal = ({ isOpen, onClose, post, onReplyCountUpdated }) => {
   // Handle Post Reply
   const handleSendReply = async () => {
     if (!replyText.trim() || isSubmitting || replyText.length > 500) return;
+
+    if (!currentUser?.username) {
+      onClose();
+      redirectToAuth(null, `/post/${post.id}`);
+      return;
+    }
 
     try {
       setIsSubmitting(true);

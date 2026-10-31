@@ -1,4 +1,5 @@
 import axios from "axios";
+import { redirectToAuth } from "./utils/authRedirect";
 
 const api = axios.create({
   // Use VITE_API_URL in development, but fallback to the relative path in production
@@ -30,6 +31,13 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+
+      // For unauthorized mutations (POST, PUT, DELETE, PATCH), redirect to login with return path
+      const method = (error.config?.method || "").toUpperCase();
+      const isAuthRoute = error.config?.url?.includes("/auth/");
+      if (!isAuthRoute && ["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+        redirectToAuth();
+      }
     }
     return Promise.reject(error);
   },

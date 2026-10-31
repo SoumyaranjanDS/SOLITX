@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Users, PlusCircle, Search, ShieldCheck, Flame, X } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import api from '../api';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const GRADIENT_PRESETS = [
   'from-purple-600 to-indigo-800',
@@ -45,7 +46,7 @@ const Communities = () => {
 
   const toggleJoinCommunity = async (id) => {
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, '/communities');
       return;
     }
 
@@ -90,7 +91,7 @@ const Communities = () => {
     e.preventDefault();
     if (!commName.trim() || submitting) return;
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, '/communities');
       return;
     }
 
@@ -137,7 +138,7 @@ const Communities = () => {
             </div>
             <button
               onClick={() => {
-                if (!user) navigate('/auth');
+                if (!user) redirectToAuth(navigate, '/communities');
                 else setShowCreateModal(true);
               }}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[13px] font-bold rounded-full shadow-sm transition-all active:scale-95"
@@ -224,7 +225,7 @@ const Communities = () => {
             ) : (
               <button
                 onClick={() => {
-                  if (!user) navigate('/auth');
+                  if (!user) redirectToAuth(navigate, '/communities');
                   else setShowCreateModal(true);
                 }}
                 className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full shadow-md active:scale-95 transition-all"

@@ -17,6 +17,7 @@ import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const ListDetail = () => {
   const { id } = useParams();
@@ -92,7 +93,7 @@ const ListDetail = () => {
 
   const toggleFollow = async () => {
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/lists/${id}`);
       return;
     }
     try {
@@ -120,7 +121,7 @@ const ListDetail = () => {
 
   const togglePin = async () => {
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/lists/${id}`);
       return;
     }
     try {

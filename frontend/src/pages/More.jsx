@@ -15,6 +15,7 @@ import {
   Globe 
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const ACCENT_COLORS = [
   { name: 'Purple', hex: '#7C3AED' },
@@ -114,7 +115,7 @@ const More = () => {
 
             <div className="space-y-1">
               <div 
-                onClick={() => currentUser?.username ? navigate(`/profile/${currentUser.username}`) : navigate('/auth')}
+                onClick={() => currentUser?.username ? navigate(`/profile/${currentUser.username}`) : redirectToAuth(navigate)}
                 className="flex items-center justify-between p-3.5 rounded-xl hover:bg-[#F7F9F9] cursor-pointer transition-colors"
               >
                 <div>

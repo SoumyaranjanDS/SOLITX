@@ -52,7 +52,9 @@ const SetupUsername = () => {
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
       localStorage.setItem('show_onboarding', 'true');
-      navigate('/');
+      const target = sessionStorage.getItem('auth_redirect') || '/';
+      try { sessionStorage.removeItem('auth_redirect'); } catch {}
+      navigate(target, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong');
     } finally {

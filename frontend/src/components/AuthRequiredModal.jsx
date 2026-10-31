@@ -2,11 +2,17 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, LogIn, UserPlus } from 'lucide-react';
 import { SolitxLogo } from './AppShell';
+import { redirectToAuth } from '../utils/authRedirect';
 
-const AuthRequiredModal = ({ isOpen, onClose, actionName = 'interact with this post' }) => {
+const AuthRequiredModal = ({ isOpen, onClose, actionName = 'interact with this post', redirectPath }) => {
   const navigate = useNavigate();
 
   if (!isOpen) return null;
+
+  const handleGoToAuth = () => {
+    onClose();
+    redirectToAuth(navigate, redirectPath);
+  };
 
   return (
     <div 
@@ -42,10 +48,7 @@ const AuthRequiredModal = ({ isOpen, onClose, actionName = 'interact with this p
         {/* Action Buttons (Mobile-friendly high touch targets) */}
         <div className="flex flex-col gap-2.5">
           <button
-            onClick={() => {
-              onClose();
-              navigate('/auth');
-            }}
+            onClick={handleGoToAuth}
             className="w-full h-12 bg-[#0F1419] hover:bg-[#272C30] text-white font-bold text-[15px] rounded-full transition-all shadow-sm active:scale-98 flex items-center justify-center gap-2"
           >
             <LogIn size={18} />
@@ -53,10 +56,7 @@ const AuthRequiredModal = ({ isOpen, onClose, actionName = 'interact with this p
           </button>
 
           <button
-            onClick={() => {
-              onClose();
-              navigate('/auth');
-            }}
+            onClick={handleGoToAuth}
             className="w-full h-12 bg-white hover:bg-[#F7F9F9] text-[#0F1419] font-bold text-[15px] rounded-full transition-all border border-[#CFD9DE] active:scale-98 flex items-center justify-center gap-2"
           >
             <UserPlus size={18} />

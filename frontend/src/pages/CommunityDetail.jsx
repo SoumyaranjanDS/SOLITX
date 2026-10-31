@@ -15,6 +15,7 @@ import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const CommunityDetail = () => {
   const { slug } = useParams();
@@ -95,7 +96,7 @@ const CommunityDetail = () => {
 
   const toggleJoin = async () => {
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/communities/${slug}`);
       return;
     }
     if (!community) return;
@@ -179,7 +180,7 @@ const CommunityDetail = () => {
     e?.preventDefault();
     if (!postText.trim() || isPosting || !community) return;
     if (!user) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/communities/${slug}`);
       return;
     }
     if (!community.is_joined && !community.is_creator) {
@@ -302,7 +303,7 @@ const CommunityDetail = () => {
           <div className="p-4 border-b border-[#EFF3F4] bg-[#F7F9F9]/50">
             {!user ? (
               <div 
-                onClick={() => navigate('/auth')}
+                onClick={() => redirectToAuth(navigate, `/communities/${slug}`)}
                 className="p-3.5 bg-white rounded-2xl border border-[#EFF3F4] flex items-center justify-between cursor-pointer hover:border-[#7C3AED]/40 transition-colors"
               >
                 <div className="flex items-center gap-2 text-[14px] text-[#536471]">

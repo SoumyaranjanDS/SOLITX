@@ -4,6 +4,7 @@ import { Bookmark, Sparkles, RefreshCw } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
 import api from '../api';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const Bookmarks = () => {
   const navigate = useNavigate();
@@ -74,7 +75,7 @@ const Bookmarks = () => {
               Sign in to save interesting architectural insights, code snippets, and posts to your private bookmarks.
             </p>
             <button
-              onClick={() => navigate('/auth')}
+              onClick={() => redirectToAuth(navigate, '/bookmarks')}
               className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full shadow-sm transition-all"
             >
               Sign in to SOLITX

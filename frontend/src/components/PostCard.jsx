@@ -17,6 +17,7 @@ import api from '../api';
 import CommentModal from './CommentModal';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionText from './MentionText';
+import { redirectToAuth } from '../utils/authRedirect';
 
 // Helper to format timestamps like Twitter (e.g. 5m, 2h, Oct 12)
 export const formatRelativeTime = (timestamp) => {
@@ -88,7 +89,10 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
   const [bookmarked, setBookmarked] = useState(Boolean(post.has_bookmarked));
   const handleBookmarkToggle = async (e) => {
     e.stopPropagation();
-    if (!currentUser?.username) return;
+    if (!currentUser?.username) {
+      redirectToAuth(null, `/post/${post.id}`);
+      return;
+    }
 
     const prev = bookmarked;
     setBookmarked(!prev);
@@ -105,6 +109,10 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
   // Like Toggle
   const handleLikeToggle = async (e) => {
     e.stopPropagation();
+    if (!currentUser?.username) {
+      redirectToAuth(null, `/post/${post.id}`);
+      return;
+    }
     if (isLiking) return;
 
     // Optimistic Update
@@ -421,6 +429,10 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                if (!currentUser?.username) {
+                  redirectToAuth(null, `/post/${post.id}`);
+                  return;
+                }
                 setShowCommentModal(true);
               }}
               className="flex items-center gap-1.5 p-2 rounded-full hover:bg-[#7C3AED]/10 hover:text-[#7C3AED] active:bg-[#7C3AED]/10 transition-colors group/reply"
@@ -434,6 +446,10 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                if (!currentUser?.username) {
+                  redirectToAuth(null, `/post/${post.id}`);
+                  return;
+                }
                 setReposted((r) => !r);
               }}
               className={`flex items-center gap-1.5 p-2 rounded-full hover:bg-green-50 hover:text-green-600 active:bg-green-50 transition-colors group/rt ${

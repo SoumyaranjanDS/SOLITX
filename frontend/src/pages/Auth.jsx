@@ -1,11 +1,28 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, Mail, Lock, LogIn } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff, Mail, Lock, LogIn, ArrowLeft } from 'lucide-react';
 import api from '../api';
 import { SolitxLogo } from '../components/AppShell';
 
 const Auth = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+
+  // Determine redirect destination from query, location state, or sessionStorage
+  const redirectParam = searchParams.get('redirect');
+  const stateFrom = location.state?.from;
+  const rawTarget = redirectParam || stateFrom || sessionStorage.getItem('auth_redirect') || '/';
+  const redirectTarget = (rawTarget && rawTarget !== '/auth' && !rawTarget.startsWith('/auth?')) ? rawTarget : '/';
+
+  useEffect(() => {
+    if (redirectTarget && redirectTarget !== '/') {
+      try {
+        sessionStorage.setItem('auth_redirect', redirectTarget);
+      } catch {}
+    }
+  }, [redirectTarget]);
+
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
@@ -21,10 +38,14 @@ const Auth = () => {
       const data = response.data;
       localStorage.setItem('token', data.data.token);
       localStorage.setItem('user', JSON.stringify(data.data.user));
+      window.dispatchEvent(new CustomEvent('user-updated', { detail: data.data.user }));
       if (!isLogin) {
         localStorage.setItem('show_onboarding', 'true');
       }
-      navigate('/');
+      try {
+        sessionStorage.removeItem('auth_redirect');
+      } catch {}
+      navigate(redirectTarget, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || 'Authentication failed');
     } finally {
@@ -33,6 +54,11 @@ const Auth = () => {
   };
 
   const handleGoogleLogin = () => {
+    if (redirectTarget && redirectTarget !== '/') {
+      try {
+        sessionStorage.setItem('auth_redirect', redirectTarget);
+      } catch {}
+    }
     window.location.href = `${import.meta.env.VITE_API_URL}/auth/google`;
   };
 
@@ -51,12 +77,23 @@ const Auth = () => {
         <div className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-1/3 w-[1200px] h-[1200px] rounded-full border border-white/20 pointer-events-none"></div>
       </div>
 
-      {/* Top Left Logo */}
-      <div className="absolute top-6 left-6 z-20 flex items-center gap-2 cursor-pointer" onClick={() => navigate('/')}>
-        <div className="w-9 h-9 bg-[#0F1419] rounded-[10px] flex items-center justify-center shadow-sm">
-          <SolitxLogo size={22} />
+      {/* Top Left Logo & Return button */}
+      <div 
+        className="absolute top-6 left-6 z-20 flex items-center gap-2 cursor-pointer group" 
+        onClick={() => navigate(redirectTarget)}
+        title={redirectTarget !== '/' ? 'Back to previous page' : 'SOLITX Home'}
+      >
+        <div className="w-10 h-10 bg-[#0F1419] rounded-[12px] flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
+          <SolitxLogo size={24} color="#FFFFFF" />
         </div>
-        <span className="font-extrabold text-[20px] text-[#0F1419] tracking-tight">SOLITX</span>
+        <div className="flex flex-col">
+          <span className="font-extrabold text-[20px] text-[#0F1419] tracking-tight leading-tight">SOLITX</span>
+          {redirectTarget !== '/' && (
+            <span className="text-[11px] font-medium text-[#536471] flex items-center gap-0.5 group-hover:text-[#7C3AED] transition-colors">
+              <ArrowLeft size={10} /> Back
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Auth Card */}
@@ -70,8 +107,8 @@ const Auth = () => {
         </div>
 
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-[24px] font-bold text-[#0F1419] mb-3">
+        <div className="text-center mb-6">
+          <h1 className="text-[24px] font-bold text-[#0F1419] mb-2">
             {isLogin ? 'Sign in with email' : 'Create an account'}
           </h1>
           <p className="text-[14px] text-[#6B7280] leading-relaxed px-4">
@@ -81,6 +118,13 @@ const Auth = () => {
             }
           </p>
         </div>
+
+        {/* Return Destination Banner */}
+        {redirectTarget && redirectTarget !== '/' && (
+          <div className="mb-5 px-3.5 py-2.5 bg-[#7C3AED]/10 border border-[#7C3AED]/20 text-[#7C3AED] rounded-xl text-[13px] font-semibold text-center animate-in fade-in">
+            Sign in to continue where you left off
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (

@@ -27,6 +27,7 @@ import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import ImageCropModal from '../components/ImageCropModal';
 import MentionText from '../components/MentionText';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const TABS = ['Posts', 'Replies', 'Media', 'Likes'];
 
@@ -39,7 +40,7 @@ const ProfileReplyCard = ({ reply, onNavigate }) => {
     e.stopPropagation();
     const token = localStorage.getItem('token');
     if (!token) {
-      onNavigate('/auth');
+      redirectToAuth(null, `/profile/${reply.username || username}`);
       return;
     }
     const prevLiked = hasLiked;
@@ -310,7 +311,7 @@ const Profile = () => {
   // Toggle Follow
   const handleToggleFollow = async () => {
     if (!currentUser?.username) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/profile/${username}`);
       return;
     }
     try {
@@ -354,7 +355,7 @@ const Profile = () => {
 
   const handleToggleFollowInModal = async (targetUsername) => {
     if (!currentUser?.username) {
-      navigate('/auth');
+      redirectToAuth(navigate, `/profile/${username}`);
       return;
     }
 

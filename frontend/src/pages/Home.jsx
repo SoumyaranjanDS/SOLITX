@@ -21,6 +21,7 @@ import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionDropdown, { useMentionAutocomplete } from '../components/MentionAutocomplete';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const Home = () => {
   const navigate = useNavigate();
@@ -271,7 +272,7 @@ const Home = () => {
             </button>
           ) : (
             <button
-              onClick={() => navigate('/auth')}
+              onClick={() => redirectToAuth(navigate)}
               className="px-3.5 py-1 bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-[13px] font-bold rounded-full transition-all shadow-sm"
             >
               Sign in
@@ -506,7 +507,7 @@ const Home = () => {
         </div>
       ) : (
         <div
-          onClick={() => setShowAuthModal(true)}
+          onClick={() => redirectToAuth(navigate)}
           className="hidden md:flex items-center justify-between px-4 py-3.5 border-b border-[#EFF3F4] bg-[#F7F9F9]/40 hover:bg-[#F7F9F9] cursor-pointer transition-colors"
         >
           <div className="flex items-center gap-3">
@@ -519,7 +520,7 @@ const Home = () => {
             </div>
           </div>
           <button
-            onClick={(e) => { e.stopPropagation(); navigate('/auth'); }}
+            onClick={(e) => { e.stopPropagation(); redirectToAuth(navigate); }}
             className="px-5 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full shadow-sm"
           >
             Sign in
@@ -559,7 +560,7 @@ const Home = () => {
                     Sign in to follow creators, developers, and builders, and see their posts here.
                   </p>
                   <button
-                    onClick={() => navigate('/auth')}
+                    onClick={() => redirectToAuth(navigate, '/')}
                     className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full transition-all shadow-md active:scale-95"
                   >
                     Sign in

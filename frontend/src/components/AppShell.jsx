@@ -25,6 +25,7 @@ import ComposeModal from './ComposeModal';
 import api from '../api';
 import { getSocket, disconnectSocket } from '../socket';
 import { getAvatarUrl } from '../utils/avatar';
+import { redirectToAuth } from '../utils/authRedirect';
 
 // ─── SOLITX Logo (Official SX Monogram) ──────────────────────────────────────
 export const SolitxLogo = ({ size = 36, className = '', color = 'currentColor', viewBox = '195 195 864 864' }) => (
@@ -446,7 +447,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
               if (user?.username) {
                 window.dispatchEvent(new Event('open-compose'));
               } else {
-                navigate('/auth');
+                redirectToAuth(navigate);
               }
             }}
             className="w-9 h-9 xl:w-full xl:h-auto xl:py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full transition-all flex items-center justify-center gap-2 shadow-sm active:scale-98"
@@ -470,7 +471,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
             </button>
           ) : (
             <button
-              onClick={() => navigate('/auth')}
+              onClick={() => redirectToAuth(navigate)}
               className="flex items-center gap-3 px-3 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full w-fit xl:w-full transition-all duration-150 font-bold shadow-sm"
             >
               <LogIn size={18} />
@@ -627,7 +628,13 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
           </div>
 
           <button
-            onClick={() => window.dispatchEvent(new Event('open-compose'))}
+            onClick={() => {
+              if (user?.username) {
+                window.dispatchEvent(new Event('open-compose'));
+              } else {
+                redirectToAuth(navigate);
+              }
+            }}
             className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_4px_20px_rgba(124,58,237,0.45)] z-20 transition-all active:scale-95 hover:scale-105"
             title="Create Post"
           >
@@ -706,7 +713,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
                 </div>
                 <p className="text-[14px] text-[#536471]">Join the developer community on SOLITX.</p>
                 <button
-                  onClick={() => { setIsDrawerOpen(false); navigate('/auth'); }}
+                  onClick={() => { setIsDrawerOpen(false); redirectToAuth(navigate); }}
                   className="w-full mt-2 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full shadow-sm active:scale-98 transition-all"
                 >
                   Sign in

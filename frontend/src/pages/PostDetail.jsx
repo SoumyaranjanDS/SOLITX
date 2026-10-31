@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import AppShell, { SolitxLogo } from '../components/AppShell';
 import AuthRequiredModal from '../components/AuthRequiredModal';
+import { redirectToAuth } from '../utils/authRedirect';
 import { formatViews } from '../components/PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
@@ -141,11 +142,10 @@ const PostDetail = () => {
   const [isSubmittingInlineReply, setIsSubmittingInlineReply] = useState(false);
   const inlineInputRef = useRef(null);
 
-  // Require Auth Helper
+  // Require Auth Helper: redirects unauthenticated users to /auth with return path
   const requireAuth = (actionDescription, callback) => {
     if (!isAuthenticated) {
-      setAuthAction(actionDescription);
-      setShowAuthModal(true);
+      redirectToAuth(navigate, `/post/${id}`);
       return false;
     }
     if (callback) callback();
@@ -1173,6 +1173,7 @@ const PostDetail = () => {
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
           actionName={authAction}
+          redirectPath={`/post/${id}`}
         />
 
         {/* ── Mobile-Friendly Floating Toast ── */}

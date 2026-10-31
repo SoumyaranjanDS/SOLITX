@@ -30,6 +30,14 @@ const OAuthHandler = ({ children }) => {
     }
     // Clean up the URL
     window.history.replaceState({}, document.title, window.location.pathname);
+
+    // If an auth redirect was stored, resume user to their exact spot
+    const redirectTarget = sessionStorage.getItem('auth_redirect');
+    if (redirectTarget && redirectTarget !== '/' && redirectTarget !== '/auth') {
+      try { sessionStorage.removeItem('auth_redirect'); } catch {}
+      window.location.replace(redirectTarget);
+      return null;
+    }
   }
 
   return children;

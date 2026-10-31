@@ -21,6 +21,7 @@ import AppShell from '../components/AppShell';
 import { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const Notifications = () => {
   const navigate = useNavigate();
@@ -193,7 +194,7 @@ const Notifications = () => {
               Sign in to see likes, replies, comments, follows, and direct messages in real time.
             </p>
             <button
-              onClick={() => navigate('/auth')}
+              onClick={() => redirectToAuth(navigate, '/notifications')}
               className="px-6 py-2.5 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[15px] rounded-full shadow-sm transition-all"
             >
               Sign in to SOLITX

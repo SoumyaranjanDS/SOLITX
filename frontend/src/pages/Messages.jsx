@@ -19,6 +19,7 @@ import { formatRelativeTime } from '../components/PostCard';
 import api from '../api';
 import { getSocket } from '../socket';
 import { getAvatarUrl } from '../utils/avatar';
+import { redirectToAuth } from '../utils/authRedirect';
 
 const QUICK_GREETINGS = [
   '👋 Hey there!',
@@ -410,7 +411,13 @@ const Messages = () => {
               <h1 className="text-[20px] font-black text-[#0F1419]">Messages</h1>
             </div>
             <button
-              onClick={() => setShowNewChatModal(true)}
+              onClick={() => {
+                if (!currentUser?.username) {
+                  redirectToAuth(navigate, '/messages');
+                } else {
+                  setShowNewChatModal(true);
+                }
+              }}
               className="p-2 rounded-full hover:bg-[#7C3AED]/10 text-[#7C3AED] transition-all active:scale-95 flex items-center gap-1.5"
               title="New message"
             >
@@ -460,12 +467,16 @@ const Messages = () => {
                 </p>
                 <button
                   onClick={() => {
-                    setConversationFilter('');
-                    setShowNewChatModal(true);
+                    if (!currentUser?.username) {
+                      redirectToAuth(navigate, '/messages');
+                    } else {
+                      setConversationFilter('');
+                      setShowNewChatModal(true);
+                    }
                   }}
                   className="px-5 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-[14px] rounded-full transition-all active:scale-95 shadow-sm"
                 >
-                  {conversationFilter ? 'Start New Chat' : 'Write a message'}
+                  {conversationFilter ? 'Start New Chat' : !currentUser?.username ? 'Sign in to chat' : 'Write a message'}
                 </button>
               </div>
             ) : (
