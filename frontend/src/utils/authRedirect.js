@@ -63,3 +63,4 @@ export const requireAuthOrRedirect = (navigate, callback, customRedirect) => {
   redirectToAuth(navigate, customRedirect);
   return false;
 };
+
