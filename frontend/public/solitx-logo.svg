@@ -1,54 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
-  <defs>
-    <radialGradient id="logo-bg" cx="50%" cy="50%" r="65%" fx="30%" fy="25%">
-      <stop offset="0%" stop-color="#1E1B4B" />
-      <stop offset="60%" stop-color="#0F1419" />
-      <stop offset="100%" stop-color="#080A0D" />
-    </radialGradient>
-    <linearGradient id="logo-spine" x1="10%" y1="10%" x2="90%" y2="90%">
-      <stop offset="0%" stop-color="#A855F7" />
-      <stop offset="50%" stop-color="#7C3AED" />
-      <stop offset="100%" stop-color="#4F46E5" />
-    </linearGradient>
-    <linearGradient id="logo-cross" x1="85%" y1="15%" x2="15%" y2="85%">
-      <stop offset="0%" stop-color="#38BDF8" />
-      <stop offset="100%" stop-color="#818CF8" />
-    </linearGradient>
-    <linearGradient id="logo-text-accent" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#A855F7" />
-      <stop offset="100%" stop-color="#6366F1" />
-    </linearGradient>
-  </defs>
-
-  <!-- Left Icon Mark -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" fill="none" role="img" aria-label="SOLITX Full Logo">
+  <!-- Left SX Icon Container -->
   <g transform="translate(10, 10)">
-    <rect width="60" height="60" rx="16" fill="url(#logo-bg)" />
+    <rect width="60" height="60" rx="16" fill="#0F1419" />
     <rect width="58.5" height="58.5" x="0.75" y="0.75" rx="15.25" stroke="rgba(255,255,255,0.12)" stroke-width="1" />
-    
-    <!-- Scale icon paths from 100x100 to 60x60 -->
-    <g transform="scale(0.6)">
-      <!-- S Ribbon -->
-      <path 
-        d="M71 25 H38 C28.6 25 21 32.6 21 42 C21 49.7 26.1 56.2 33.3 58.1 L60.7 65.4 C66.1 66.8 69.5 71.3 69.5 76.4 C69.5 82.3 64.6 87 58.7 87 H25" 
-        stroke="url(#logo-spine)" 
-        stroke-width="8.5" 
-        stroke-linecap="round" 
-        stroke-linejoin="round"
-      />
-      <!-- Counter 'X' Slash Upper -->
-      <path d="M72.5 28 L54.5 46" stroke="url(#logo-cross)" stroke-width="8.5" stroke-linecap="round" />
-      <!-- Counter 'X' Slash Lower -->
-      <path d="M45.5 55 L27.5 73" stroke="url(#logo-cross)" stroke-width="8.5" stroke-linecap="round" />
+    <g transform="translate(6, 6) scale(0.03827)">
+      <g fill="#FFFFFF">
+        <path d="M840.50,919.07 C826.70,918.11 817.91,915.15 807.50,907.97 C800.66,903.24 784.49,886.18 708.50,803.51 C683.60,776.42 659.27,750.00 628.19,716.30 C599.05,684.70 586.17,674.36 560.55,661.99 C533.65,648.99 524.66,646.80 418.91,627.52 C364.84,617.66 350.19,614.41 332.95,608.47 C288.19,593.04 252.04,559.27 236.65,518.48 C209.09,445.45 246.83,367.70 322.00,342.63 C343.73,335.38 339.42,335.65 442.00,335.24 C503.94,335.00 538.25,335.24 545.85,335.97 C586.40,339.86 618.43,353.19 648.06,378.50 C652.57,382.35 666.66,396.75 679.39,410.50 C724.79,459.58 724.41,459.08 724.45,470.00 C724.48,480.53 722.84,482.76 693.60,511.85 C665.12,540.19 664.46,540.65 655.99,538.11 C652.37,537.03 632.34,517.16 590.47,473.11 C574.98,456.81 560.51,447.32 544.13,442.71 C536.64,440.60 534.91,440.56 450.50,440.23 C361.67,439.88 356.16,440.08 347.45,443.92 C330.78,451.28 324.98,471.53 335.01,487.36 C346.25,505.08 382.06,515.18 484.50,529.52 C528.79,535.72 544.21,538.75 563.50,545.03 C596.56,555.78 623.79,570.76 649.50,592.33 C665.25,605.54 899.16,837.28 918.13,858.46 C929.23,870.85 932.27,876.79 932.80,887.09 C933.32,897.09 930.84,903.12 923.40,909.92 C914.35,918.19 910.51,919.00 878.50,919.45 C863.65,919.66 846.55,919.49 840.50,919.07 Z"/>
+        <path d="M256.27,880.97 C237.52,877.17 225.17,860.03 228.10,841.86 C231.81,818.81 251.97,795.69 277.69,784.98 C294.35,778.05 294.67,778.03 381.07,778.01 C460.95,778.00 464.44,777.85 477.00,773.81 C495.62,767.82 506.42,759.89 534.00,731.97 C559.22,706.42 561.76,704.60 572.00,704.54 C580.64,704.49 585.57,707.42 595.17,718.31 C599.20,722.88 608.06,732.83 614.86,740.43 C630.07,757.42 632.51,762.00 632.49,773.55 C632.46,787.55 630.06,791.20 603.12,818.07 C590.68,830.48 576.53,843.59 571.68,847.19 C548.53,864.36 526.11,874.08 496.50,879.78 C487.42,881.53 264.47,882.63 256.27,880.97 Z"/>
+        <path d="M748.00,636.90 C743.11,635.02 739.65,631.89 716.74,608.65 C687.88,579.36 684.98,575.38 685.02,565.09 C685.06,554.71 685.27,554.46 737.28,502.07 C763.80,475.36 806.37,431.45 831.87,404.50 C889.71,343.38 893.23,340.28 909.09,336.54 C917.16,334.64 986.62,334.30 995.20,336.12 C1021.41,341.69 1029.36,366.99 1012.12,390.00 C1005.42,398.95 858.57,552.01 800.89,610.17 C774.72,636.56 772.64,638.03 760.50,638.66 C755.13,638.93 752.22,638.53 748.00,636.90 Z"/>
+      </g>
     </g>
   </g>
 
-  <!-- Wordmark "SOLITX" -->
+  <!-- Wordmark -->
   <g transform="translate(86, 48)">
     <text font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-weight="900" font-size="28" letter-spacing="-0.04em">
-      <tspan fill="#0F1419">SOLIT</tspan>
-      <tspan fill="url(#logo-text-accent)">X</tspan>
+      <tspan fill="#0F1419">SOLIT</tspan><tspan fill="#7C3AED">X</tspan>
     </text>
     <text y="16" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif" font-weight="600" font-size="9" letter-spacing="0.12em" fill="#64748B">DEVELOPER NETWORK</text>
   </g>
 </svg>
-
