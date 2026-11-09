@@ -96,6 +96,7 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
 
   // Reply State
   const [replyCount, setReplyCount] = useState(parseInt(post.replies_count, 10) || 0);
+  const [viewsCount, setViewsCount] = useState(parseInt(post.views_count, 10) || 0);
   const [showCommentModal, setShowCommentModal] = useState(false);
 
   // Lightbox Modal State
@@ -106,6 +107,12 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
       setReplyCount(parseInt(post.replies_count, 10) || 0);
     }
   }, [post.replies_count]);
+
+  useEffect(() => {
+    if (post.views_count !== undefined) {
+      setViewsCount(parseInt(post.views_count, 10) || 0);
+    }
+  }, [post.views_count]);
 
   // Menu and Modals
   const [showMenu, setShowMenu] = useState(false);
@@ -407,7 +414,18 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                 {/* Video Player (HLS Adaptive Stream / Faststart MP4) */}
                 {post.video && (
                   <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
-                    <VideoPlayer video={post.video} videoId={post.video.id} />
+                    <VideoPlayer
+                      video={post.video}
+                      videoId={post.video.id}
+                      postId={post.id}
+                      onViewCounted={(newCount) => {
+                        if (typeof newCount === 'number') {
+                          setViewsCount(newCount);
+                        } else {
+                          setViewsCount((prev) => prev + 1);
+                        }
+                      }}
+                    />
                   </div>
                 )}
 
@@ -515,11 +533,11 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                 if (onNavigate) onNavigate();
               }}
               className="flex items-center gap-1.5 p-2 rounded-full hover:bg-blue-50 hover:text-blue-500 active:bg-blue-50 transition-colors group/views"
-              title={`${(Number(post.views_count) || 0).toLocaleString()} Views`}
+              title={`${(Number(viewsCount) || 0).toLocaleString()} Views`}
             >
               <BarChart2 size={17} strokeWidth={1.8} className="group-hover/views:text-blue-500" />
               <span className="text-[12px] sm:text-[13px] group-hover/views:text-blue-500">
-                {formatViews(post.views_count || 0)}
+                {formatViews(viewsCount || 0)}
               </span>
             </button>
 

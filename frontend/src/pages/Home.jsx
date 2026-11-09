@@ -21,7 +21,7 @@ import OnboardingModal from '../components/OnboardingModal';
 import AuthRequiredModal from '../components/AuthRequiredModal';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
-import { uploadVideoDirectToS3 } from '../utils/videoUpload';
+import { uploadVideoDirectToS3, getLocalVideoDuration, MAX_VIDEO_SIZE_BYTES, MAX_VIDEO_DURATION_SECONDS } from '../utils/videoUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionDropdown, { useMentionAutocomplete } from '../components/MentionAutocomplete';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -220,10 +220,30 @@ const Home = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (imageInputRef.current) imageInputRef.current.value = '';
+
+    // 1. Instant File Size Guardrail (100MB limit)
+    if (file.size > MAX_VIDEO_SIZE_BYTES) {
+      setPostError(`Video size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds the 100MB maximum limit. Please select a smaller file.`);
+      if (videoInputRef.current) videoInputRef.current.value = '';
+      return;
+    }
+
+    // 2. Instant Duration Guardrail (120s limit)
+    try {
+      const duration = await getLocalVideoDuration(file);
+      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+        setPostError(`Video duration (${Math.round(duration)}s) exceeds the 120-second maximum limit. Please trim your clip before uploading.`);
+        if (videoInputRef.current) videoInputRef.current.value = '';
+        return;
+      }
+    } catch (_) {
+      // Continue to upload validation if probe fails
+    }
+
     if (mediaState?.previewUrl) {
       URL.revokeObjectURL(mediaState.previewUrl);
     }
-    if (imageInputRef.current) imageInputRef.current.value = '';
 
     const previewUrl = URL.createObjectURL(file);
     setMediaState({

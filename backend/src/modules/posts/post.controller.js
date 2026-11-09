@@ -2,7 +2,7 @@ import pool from "../../config/db.js";
 import { AppError } from "../../utils/AppError.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
 import { createNotification } from "../../services/notificationService.js";
-import { getMediaBaseUrl } from "../../services/s3Service.js";
+import { getMediaBaseUrl, cascadeDeleteVideoAssets, deleteS3Object } from "../../services/s3Service.js";
 
 const mediaBaseUrl = getMediaBaseUrl();
 
@@ -1089,6 +1089,15 @@ export const recordPostView = async (req, res, next) => {
     if (result.rowCount === 0) {
       throw new AppError(404, "Post not found");
     }
+
+    // Also update attached video's view counter
+    await pool
+      .query(
+        "UPDATE videos SET views_count = COALESCE(views_count, 0) + 1 WHERE post_id = $1;",
+        [id]
+      )
+      .catch(() => {});
+
     return res.status(200).json(
       new ApiResponse(200, { views_count: result.rows[0].views_count }, "Post view recorded")
     );
@@ -1153,8 +1162,43 @@ export const deletePost = async (req, res, next) => {
       throw new AppError(403, "Forbidden: You can only delete your own posts");
     }
 
+    // 1. Fetch attached videos and media before deleting rows
+    const videoRes = await pool.query(
+      `SELECT id, user_id, s3_key_raw, thumbnail_key, download_key, hls_master_key FROM videos WHERE post_id = $1`,
+      [id]
+    );
+    const mediaRes = await pool.query(
+      `SELECT s3_key_raw FROM media WHERE post_id = $1`,
+      [id]
+    );
+
+    // 2. Delete database rows
     await pool.query("DELETE FROM videos WHERE post_id = $1", [id]);
+    await pool.query("DELETE FROM media WHERE post_id = $1", [id]);
     await pool.query("DELETE FROM posts WHERE id = $1", [id]);
+
+    // 3. Asynchronously cascade delete all S3 assets in background
+    (async () => {
+      try {
+        for (const v of videoRes.rows) {
+          await cascadeDeleteVideoAssets({
+            videoId: v.id,
+            userId: v.user_id,
+            s3KeyRaw: v.s3_key_raw,
+            thumbnailKey: v.thumbnail_key,
+            downloadKey: v.download_key,
+            hlsMasterKey: v.hls_master_key,
+          });
+        }
+        for (const m of mediaRes.rows) {
+          if (m.s3_key_raw) {
+            await deleteS3Object(m.s3_key_raw);
+          }
+        }
+      } catch (cleanErr) {
+        console.warn(`[DeletePost] Cascading S3 cleanup error: ${cleanErr.message}`);
+      }
+    })();
 
     return res.status(200).json(
       new ApiResponse(200, { id }, "Post deleted successfully")

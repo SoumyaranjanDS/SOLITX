@@ -30,6 +30,7 @@ export function formatVideoResponse(video) {
     height: video.height || null,
     original_filename: video.original_filename || null,
     file_size_bytes: video.file_size_bytes ? parseInt(video.file_size_bytes, 10) : null,
+    views_count: video.views_count ? parseInt(video.views_count, 10) : 0,
     error_message: video.error_message || null,
     created_at: video.created_at,
     updated_at: video.updated_at,
@@ -334,4 +335,49 @@ export const getVideoById = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * 7. Record Video View (Twitter/X Style: >= 3s consecutive watch with >= 50% visibility)
+ * POST /api/v1/videos/:id/view
+ */
+export const recordVideoView = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `UPDATE videos SET views_count = COALESCE(views_count, 0) + 1 WHERE id = $1 RETURNING views_count, post_id`,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      throw new AppError(404, "Video not found.");
+    }
+
+    const postId = result.rows[0].post_id;
+    let postViewsCount = null;
+    if (postId) {
+      const postRes = await pool.query(
+        `UPDATE posts SET views_count = COALESCE(views_count, 0) + 1 WHERE id = $1 RETURNING views_count`,
+        [postId]
+      );
+      if (postRes.rowCount > 0) {
+        postViewsCount = postRes.rows[0].views_count;
+      }
+    }
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          video_views_count: result.rows[0].views_count,
+          post_views_count: postViewsCount,
+        },
+        "Video view recorded successfully."
+      )
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
 

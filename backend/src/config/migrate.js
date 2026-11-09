@@ -307,6 +307,9 @@ const runMigrations = async () => {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_video_uploads_video_id ON video_uploads (video_id);
+
+      ALTER TABLE videos ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_videos_views_count ON videos (views_count);
     `);
     console.log(
       "'media', 'videos', 'video_uploads' tables and 'posts.has_media' column verified successfully!",

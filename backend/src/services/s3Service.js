@@ -8,6 +8,9 @@ import {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+  PutBucketLifecycleConfigurationCommand,
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
@@ -324,4 +327,129 @@ export async function uploadLocalFileToS3(
   });
 
   return await s3.send(command);
+}
+
+/**
+ * Deletes all objects in S3 matching a prefix (e.g. processed/userId/videoId/).
+ * Ensures complete cleanup of HLS folders and multiple .ts segments.
+ */
+export async function deleteS3Prefix(prefix) {
+  if (!prefix) return;
+  try {
+    let continuationToken = undefined;
+    do {
+      const listRes = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        })
+      );
+
+      if (listRes.Contents && listRes.Contents.length > 0) {
+        const objectsToDelete = listRes.Contents.map((obj) => ({ Key: obj.Key }));
+        await s3.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: objectsToDelete, Quiet: true },
+          })
+        );
+        console.log(`[S3Service] 🗑️ Deleted ${objectsToDelete.length} objects under prefix ${prefix}`);
+      }
+
+      continuationToken = listRes.NextContinuationToken;
+    } while (continuationToken);
+  } catch (err) {
+    console.warn(`[S3Service] Warning: Failed to delete S3 prefix '${prefix}':`, err.message);
+  }
+}
+
+/**
+ * Cascades deletion of all S3 media assets associated with a video.
+ * Removes thumbnail, download MP4, raw video, and all HLS .ts / .m3u8 files.
+ */
+export async function cascadeDeleteVideoAssets({
+  videoId,
+  userId,
+  s3KeyRaw,
+  thumbnailKey,
+  downloadKey,
+  hlsMasterKey,
+}) {
+  const promises = [];
+
+  // Delete raw video object
+  if (s3KeyRaw) {
+    promises.push(deleteS3Object(s3KeyRaw));
+  }
+
+  // Delete single files if stored outside prefix
+  if (thumbnailKey) promises.push(deleteS3Object(thumbnailKey));
+  if (downloadKey) promises.push(deleteS3Object(downloadKey));
+  if (hlsMasterKey) promises.push(deleteS3Object(hlsMasterKey));
+
+  // Delete entire processed directory for this video: processed/${userId}/${videoId}/
+  if (userId && videoId) {
+    const videoPrefix = `processed/${userId}/${videoId}/`;
+    promises.push(deleteS3Prefix(videoPrefix));
+  }
+
+  await Promise.allSettled(promises);
+  console.log(`[S3Service] ✅ Cascading S3 cleanup complete for video ${videoId}`);
+}
+
+/**
+ * Applies a 24-hour cleanup policy on the S3 bucket to automatically abort abandoned multipart uploads.
+ */
+export async function configureS3LifecycleRules() {
+  try {
+    const command = new PutBucketLifecycleConfigurationCommand({
+      Bucket: bucket,
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            ID: "AbortIncompleteMultipartUploadsAfter24Hours",
+            Status: "Enabled",
+            Filter: { Prefix: "" },
+            AbortIncompleteMultipartUpload: {
+              DaysAfterInitiation: 1, // 24 hours
+            },
+          },
+        ],
+      },
+    });
+    await s3.send(command);
+    console.log(`[S3Service] 🛡️ S3 Lifecycle rule configured: Incomplete multipart uploads will abort after 24 hours.`);
+  } catch (err) {
+    console.warn(`[S3Service] Note: S3 Lifecycle rule could not be set automatically (${err.message}). Ensure IAM user has s3:PutLifecycleConfiguration permission.`);
+  }
+}
+
+/**
+ * Aborts and purges abandoned multipart uploads older than 24 hours from PostgreSQL and S3.
+ */
+export async function cleanupStaleUploadSessions(pool) {
+  if (!pool) return;
+  try {
+    const staleRes = await pool.query(`
+      SELECT vu.video_id, vu.s3_upload_id, vu.s3_key
+      FROM video_uploads vu
+      WHERE vu.created_at < NOW() - INTERVAL '24 hours'
+    `);
+
+    for (const row of staleRes.rows) {
+      await abortVideoMultipartUpload({
+        uploadId: row.s3_upload_id,
+        s3Key: row.s3_key,
+      });
+      await pool.query(
+        `UPDATE videos SET status = 'failed', error_message = 'Upload timed out after 24 hours' WHERE id = $1`,
+        [row.video_id]
+      );
+      await pool.query(`DELETE FROM video_uploads WHERE video_id = $1`, [row.video_id]);
+      console.log(`[S3Service] 🧹 Aborted stale multipart upload for video ${row.video_id}`);
+    }
+  } catch (err) {
+    console.warn("[S3Service] Stale upload cleanup note:", err.message);
+  }
 }

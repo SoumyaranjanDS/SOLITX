@@ -17,7 +17,13 @@ import {
 } from "lucide-react";
 import api from "../api";
 
-export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) => {
+export const VideoPlayer = ({
+  video: initialVideo,
+  videoId,
+  postId,
+  onViewCounted,
+  className = "",
+}) => {
   const [video, setVideo] = useState(initialVideo || null);
   const videoRef = useRef(null);
   const containerRef = useRef(null);
@@ -33,6 +39,11 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+
+  // Twitter/X-style 3-second consecutive view counting state
+  const hasCountedViewRef = useRef(false);
+  const consecutiveWatchMsRef = useRef(0);
+  const is50PercentVisibleRef = useRef(false);
 
 
   // Double-tap seek feedback animation
@@ -228,7 +239,10 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const v = videoRef.current;
     if (!v) return;
 
-    const onWaiting = () => setIsBuffering(true);
+    const onWaiting = () => {
+      setIsBuffering(true);
+      consecutiveWatchMsRef.current = 0;
+    };
     const onPlaying = () => {
       setIsBuffering(false);
       setIsPlaying(true);
@@ -237,6 +251,10 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       setIsPlaying(false);
       setShowControls(true);
       setIsBuffering(false);
+      consecutiveWatchMsRef.current = 0;
+    };
+    const onSeeking = () => {
+      consecutiveWatchMsRef.current = 0;
     };
     const onCanPlay = () => setIsBuffering(false);
     const onLoadedData = () => setIsBuffering(false);
@@ -244,6 +262,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const onError = () => {
       setIsBuffering(false);
       setIsPlaying(false);
+      consecutiveWatchMsRef.current = 0;
     };
     const onTimeUpdate = () => {
       setCurrentTime(v.currentTime);
@@ -261,6 +280,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     v.addEventListener("waiting", onWaiting);
     v.addEventListener("playing", onPlaying);
     v.addEventListener("pause", onPause);
+    v.addEventListener("seeking", onSeeking);
     v.addEventListener("canplay", onCanPlay);
     v.addEventListener("canplaythrough", onCanPlay);
     v.addEventListener("loadeddata", onLoadedData);
@@ -274,6 +294,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       v.removeEventListener("waiting", onWaiting);
       v.removeEventListener("playing", onPlaying);
       v.removeEventListener("pause", onPause);
+      v.removeEventListener("seeking", onSeeking);
       v.removeEventListener("canplay", onCanPlay);
       v.removeEventListener("canplaythrough", onCanPlay);
       v.removeEventListener("loadeddata", onLoadedData);
@@ -285,7 +306,68 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     };
   }, [updateBufferState, video?.duration_seconds]);
 
-  // Auto-pause and stop data loading when scrolled out of view (saves cellular/Wi-Fi data)
+  // Reset view counter if current video changes
+  useEffect(() => {
+    hasCountedViewRef.current = false;
+    consecutiveWatchMsRef.current = 0;
+  }, [currentVideoId]);
+
+  // Twitter/X-style 3-second consecutive watch view counting
+  useEffect(() => {
+    if (!isPlaying || hasCountedViewRef.current) return;
+
+    const interval = setInterval(() => {
+      const v = videoRef.current;
+      if (!v || v.paused || v.ended || v.seeking || isBuffering) {
+        consecutiveWatchMsRef.current = 0;
+        return;
+      }
+
+      if (is50PercentVisibleRef.current) {
+        consecutiveWatchMsRef.current += 200;
+        if (consecutiveWatchMsRef.current >= 3000 && !hasCountedViewRef.current) {
+          hasCountedViewRef.current = true;
+          clearInterval(interval);
+
+          const effectivePostId = postId || video?.post_id;
+          const effectiveVideoId = video?.id || videoId;
+
+          if (effectivePostId) {
+            api
+              .post(`/posts/${effectivePostId}/view`)
+              .then((res) => {
+                if (onViewCounted) {
+                  onViewCounted(res.data?.data?.views_count);
+                }
+              })
+              .catch((err) => {
+                console.warn("[VideoPlayer] Post view recording note:", err.message);
+              });
+          } else if (effectiveVideoId) {
+            api
+              .post(`/videos/${effectiveVideoId}/view`)
+              .then((res) => {
+                if (onViewCounted) {
+                  onViewCounted(
+                    res.data?.data?.post_views_count || res.data?.data?.video_views_count
+                  );
+                }
+              })
+              .catch((err) => {
+                console.warn("[VideoPlayer] Video view recording note:", err.message);
+              });
+          }
+        }
+      } else {
+        // Less than 50% visible, reset consecutive watch timer
+        consecutiveWatchMsRef.current = 0;
+      }
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, [isPlaying, isBuffering, postId, video?.post_id, video?.id, videoId, onViewCounted]);
+
+  // Auto-pause and stop data loading when scrolled out of view, and monitor >= 50% viewport visibility
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -293,7 +375,15 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!entry.isIntersecting && videoRef.current) {
+          const is50 = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+          is50PercentVisibleRef.current = is50;
+
+          if (!is50) {
+            // Drop below 50% resets the consecutive watch counter
+            consecutiveWatchMsRef.current = 0;
+          }
+
+          if (entry.intersectionRatio < 0.2 && videoRef.current) {
             if (!videoRef.current.paused) {
               videoRef.current.pause();
               setIsPlaying(false);
@@ -302,7 +392,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
             if (hlsRef.current) {
               hlsRef.current.stopLoad();
             }
-          } else if (entry.isIntersecting) {
+          } else if (entry.intersectionRatio >= 0.2) {
             // Resume loading chunks if user scrolls back into view
             if (hlsRef.current) {
               hlsRef.current.startLoad();
@@ -310,7 +400,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
           }
         });
       },
-      { threshold: 0.2 }
+      { threshold: [0.0, 0.2, 0.5] }
     );
 
     observer.observe(container);

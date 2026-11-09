@@ -11,6 +11,78 @@ export const MAX_VIDEO_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 export const MAX_VIDEO_DURATION_SECONDS = 120.5; // 2 minutes
 
 /**
+ * Uploads a single multipart chunk to S3 with exponential backoff retry.
+ * Retries up to 3 times on network failure or 5xx error before giving up.
+ */
+async function uploadChunkWithRetry({
+  chunk,
+  uploadUrl,
+  partNumber,
+  onProgress,
+  maxRetries = 3,
+}) {
+  let attempt = 0;
+
+  while (attempt <= maxRetries) {
+    try {
+      return await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl, true);
+
+        if (xhr.upload && onProgress) {
+          xhr.upload.onprogress = (evt) => {
+            if (evt.lengthComputable) {
+              onProgress(evt.loaded);
+            }
+          };
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            const rawEtag = xhr.getResponseHeader("ETag") || "";
+            resolve(rawEtag.replace(/"/g, ""));
+          } else {
+            reject(
+              new Error(
+                `Failed to upload part ${partNumber} (HTTP ${xhr.status})`
+              )
+            );
+          }
+        };
+
+        xhr.onerror = () => {
+          reject(
+            new Error(`Network error uploading part ${partNumber} directly to S3.`)
+          );
+        };
+
+        xhr.ontimeout = () => {
+          reject(new Error(`Timeout uploading part ${partNumber} to S3.`));
+        };
+
+        xhr.timeout = 60000; // 60s timeout per 5MB chunk
+        xhr.send(chunk);
+      });
+    } catch (err) {
+      attempt++;
+      if (attempt > maxRetries) {
+        throw new Error(
+          `Failed uploading chunk #${partNumber} after ${maxRetries} retries: ${err.message}`
+        );
+      }
+      // Exponential backoff: ~1s, ~2s, ~4s with jitter
+      const backoffMs = Math.pow(2, attempt - 1) * 1000 + Math.random() * 500;
+      console.warn(
+        `[VideoUpload] ⚠️ Part ${partNumber} upload failed (attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(
+          backoffMs
+        )}ms...`
+      );
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+  }
+}
+
+/**
  * Checks video duration in browser before upload.
  */
 export function getLocalVideoDuration(file) {
@@ -98,36 +170,19 @@ export async function uploadVideoDirectToS3(file, onProgress) {
       const end = Math.min(file.size, start + part_size_bytes);
       const chunk = file.slice(start, end);
 
-      const etag = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", partMeta.uploadUrl, true);
-
-        if (xhr.upload) {
-          xhr.upload.onprogress = (evt) => {
-            if (evt.lengthComputable) {
-              partProgress[i] = evt.loaded;
-              updateOverallProgress();
-            }
-          };
-        }
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            partProgress[i] = chunk.size;
-            updateOverallProgress();
-            const rawEtag = xhr.getResponseHeader("ETag") || "";
-            resolve(rawEtag.replace(/"/g, ""));
-          } else {
-            reject(new Error(`Failed to upload video part ${partNumber} (HTTP ${xhr.status})`));
-          }
-        };
-
-        xhr.onerror = () => {
-          reject(new Error(`Network error uploading video part ${partNumber} directly to S3.`));
-        };
-
-        xhr.send(chunk);
+      const etag = await uploadChunkWithRetry({
+        chunk,
+        uploadUrl: partMeta.uploadUrl,
+        partNumber,
+        onProgress: (loadedBytes) => {
+          partProgress[i] = loadedBytes;
+          updateOverallProgress();
+        },
+        maxRetries: 3,
       });
+
+      partProgress[i] = chunk.size;
+      updateOverallProgress();
 
       uploadedParts.push({
         PartNumber: partNumber,

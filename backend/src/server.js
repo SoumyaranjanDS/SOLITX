@@ -8,6 +8,7 @@ import { ApiResponse } from "./utils/ApiResponse.js";
 import { AppError } from "./utils/AppError.js";
 import { initSocket } from "./services/socketService.js";
 import { startWorker } from "./worker.js";
+import { configureS3LifecycleRules, cleanupStaleUploadSessions } from "./services/s3Service.js";
 
 dotenv.config();
 
@@ -291,6 +292,9 @@ connectDB().then(() => {
     startWorker().catch((err) => {
       console.warn("[Worker] Auto-start note:", err.message);
     });
+    // Configure S3 24h incomplete multipart lifecycle & clean stale uploads
+    configureS3LifecycleRules().catch(() => {});
+    cleanupStaleUploadSessions(pool).catch(() => {});
   });
 });
 

@@ -615,7 +615,24 @@ const PostDetail = () => {
               {/* Video Player */}
               {post.video && (
                 <div className="my-3">
-                  <VideoPlayer video={post.video} videoId={post.video.id} />
+                  <VideoPlayer
+                    video={post.video}
+                    videoId={post.video.id}
+                    postId={post.id}
+                    onViewCounted={(newCount) => {
+                      setPost((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              views_count:
+                                typeof newCount === 'number'
+                                  ? newCount
+                                  : (Number(prev.views_count) || 0) + 1,
+                            }
+                          : prev
+                      );
+                    }}
+                  />
                 </div>
               )}
 
