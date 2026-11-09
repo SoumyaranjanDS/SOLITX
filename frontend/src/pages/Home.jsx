@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ImageIcon,
+  Video,
   BarChart2,
   Smile,
   Calendar,
@@ -19,6 +20,7 @@ import OnboardingModal from '../components/OnboardingModal';
 import AuthRequiredModal from '../components/AuthRequiredModal';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
+import { uploadVideoDirectToS3 } from '../utils/videoUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionDropdown, { useMentionAutocomplete } from '../components/MentionAutocomplete';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -85,8 +87,9 @@ const Home = () => {
     triggerMention,
   } = useMentionAutocomplete({ text: postText, setText: setPostText, textareaRef });
   
-  // Media Upload State
-  const fileInputRef = useRef(null);
+  // Media Upload State (Mutually exclusive: single photo OR single video)
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const [mediaState, setMediaState] = useState(null);
 
   // Feed State
@@ -178,13 +181,19 @@ const Home = () => {
     return () => window.removeEventListener('post-created', handleExternalPost);
   }, [activeTab]);
 
-  // File change handler for S3 direct upload
-  const handleFileChange = async (e) => {
+  // Image change handler for S3 direct upload (Mutual Exclusivity: resets any video)
+  const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (mediaState?.previewUrl) {
+      URL.revokeObjectURL(mediaState.previewUrl);
+    }
+    if (videoInputRef.current) videoInputRef.current.value = '';
+
     const previewUrl = URL.createObjectURL(file);
     setMediaState({
+      type: 'image',
       file,
       previewUrl,
       mediaId: null,
@@ -205,19 +214,62 @@ const Home = () => {
     }
   };
 
+  // Video change handler for S3 multipart upload (Mutual Exclusivity: resets any image)
+  const handleVideoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (mediaState?.previewUrl) {
+      URL.revokeObjectURL(mediaState.previewUrl);
+    }
+    if (imageInputRef.current) imageInputRef.current.value = '';
+
+    const previewUrl = URL.createObjectURL(file);
+    setMediaState({
+      type: 'video',
+      file,
+      previewUrl,
+      videoId: null,
+      status: 'uploading',
+      progress: 0,
+      error: null,
+    });
+    setPostError('');
+
+    try {
+      const res = await uploadVideoDirectToS3(file, (percent) => {
+        setMediaState((prev) => (prev ? { ...prev, progress: percent } : null));
+      });
+      setMediaState((prev) =>
+        prev
+          ? {
+              ...prev,
+              videoId: res.videoId,
+              duration: res.duration,
+              status: 'ready',
+              progress: 100,
+            }
+          : null
+      );
+    } catch (err) {
+      setMediaState((prev) => (prev ? { ...prev, status: 'error', error: err.message } : null));
+      setPostError(err.message || 'Video upload failed');
+    }
+  };
+
   const handleRemoveMedia = () => {
     if (mediaState?.previewUrl) {
       URL.revokeObjectURL(mediaState.previewUrl);
     }
     setMediaState(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (imageInputRef.current) imageInputRef.current.value = '';
+    if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
   // Post Submission from Inline Composer
   const handleCreatePost = async () => {
-    if ((!postText.trim() && !mediaState?.mediaId) || isSubmitting || postText.length > 500) return;
+    const hasMediaReady = (mediaState?.type === 'image' && mediaState.mediaId) || (mediaState?.type === 'video' && mediaState.videoId);
+    if ((!postText.trim() && !hasMediaReady) || isSubmitting || postText.length > 500) return;
     if (mediaState && mediaState.status === 'uploading') return;
 
     try {
@@ -225,7 +277,8 @@ const Home = () => {
       setPostError('');
       const payload = { 
         content: postText.trim(),
-        media_ids: mediaState?.mediaId ? [mediaState.mediaId] : undefined,
+        media_ids: mediaState?.type === 'image' && mediaState?.mediaId ? [mediaState.mediaId] : undefined,
+        video_id: mediaState?.type === 'video' && mediaState?.videoId ? mediaState.videoId : undefined,
       };
       if (activeTab !== 'For you' && activeTab !== 'Following' && activeTab !== 'Trending') {
         payload.category = activeTab;
@@ -382,34 +435,43 @@ const Home = () => {
               />
             </div>
 
-            {/* Media Image Preview Container */}
+            {/* Media Preview Container (Image OR Video) */}
             {mediaState && (
-              <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-[#EFF3F4] bg-[#0F1419]/5 max-h-[260px] flex items-center justify-center group/img">
-                <img
-                  src={mediaState.previewUrl}
-                  alt="Upload preview"
-                  className="w-full h-full max-h-[260px] object-cover"
-                />
+              <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-[#EFF3F4] bg-[#0F1419]/5 max-h-[300px] flex items-center justify-center group/img">
+                {mediaState.type === 'video' ? (
+                  <video
+                    src={mediaState.previewUrl}
+                    controls
+                    playsInline
+                    className="w-full max-h-[300px] object-contain bg-black"
+                  />
+                ) : (
+                  <img
+                    src={mediaState.previewUrl}
+                    alt="Upload preview"
+                    className="w-full h-full max-h-[260px] object-cover"
+                  />
+                )}
 
-                {/* Remove Image Button */}
+                {/* Remove Media Button */}
                 <button
                   type="button"
                   onClick={handleRemoveMedia}
-                  className="absolute top-2.5 right-2.5 p-1.5 bg-black/70 hover:bg-black/90 text-white rounded-full backdrop-blur-md transition-all shadow-md active:scale-95"
-                  title="Remove image"
+                  className="absolute top-2.5 right-2.5 p-1.5 bg-black/70 hover:bg-black/90 text-white rounded-full backdrop-blur-md transition-all shadow-md active:scale-95 z-20"
+                  title="Remove attachment"
                 >
                   <X size={16} />
                 </button>
 
                 {/* Uploading progress overlay */}
                 {mediaState.status === 'uploading' && (
-                  <div className="absolute inset-0 bg-black/65 backdrop-blur-md flex flex-col items-center justify-center text-white px-6 transition-all duration-200">
+                  <div className="absolute inset-0 bg-black/65 backdrop-blur-md flex flex-col items-center justify-center text-white px-6 transition-all duration-200 z-10">
                     <div className="relative mb-3 flex items-center justify-center">
                       <div className="w-12 h-12 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin" />
                       <div className="absolute inset-0 rounded-full bg-violet-500/10 animate-ping opacity-30" />
                     </div>
                     <div className="flex items-center gap-1.5 text-[14px] font-bold text-white tracking-wide">
-                      <span>Uploading</span>
+                      <span>Uploading {mediaState.type === 'video' ? 'video' : 'photo'}</span>
                       <span className="flex tracking-widest animate-pulse">...</span>
                       <span className="text-[12px] font-semibold text-violet-300 ml-1 tabular-nums">
                         {mediaState.progress}%
@@ -426,15 +488,19 @@ const Home = () => {
 
                 {/* Ready Badge */}
                 {mediaState.status === 'ready' && (
-                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold rounded-full flex items-center gap-1.5 shadow-md border border-white/10">
+                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold rounded-full flex items-center gap-1.5 shadow-md border border-white/10 z-10">
                     <Check size={12} className="text-emerald-400 stroke-[3]" />
-                    <span>Photo attached</span>
+                    <span>
+                      {mediaState.type === 'video'
+                        ? `Video attached (${Math.round(mediaState.duration || 0)}s)`
+                        : 'Photo attached'}
+                    </span>
                   </div>
                 )}
 
                 {/* Error State */}
                 {mediaState.status === 'error' && (
-                  <div className="absolute inset-0 bg-red-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-white px-4 text-center">
+                  <div className="absolute inset-0 bg-red-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-white px-4 text-center z-10">
                     <p className="text-[13px] font-bold text-red-200 mb-2">
                       {mediaState.error || 'Upload failed'}
                     </p>
@@ -454,25 +520,41 @@ const Home = () => {
               <p className="text-red-500 text-[13px] font-medium mb-2">{postError}</p>
             )}
 
-            {/* Hidden File Input */}
+            {/* Hidden File Inputs (Mutually exclusive: image vs video) */}
             <input
-              ref={fileInputRef}
+              ref={imageInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
               className="hidden"
-              onChange={handleFileChange}
+              onChange={handleImageChange}
+            />
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,video/x-m4v"
+              className="hidden"
+              onChange={handleVideoChange}
             />
 
             <div className="flex items-center justify-between pt-2 border-t border-[#EFF3F4] mt-1">
               <div className="flex items-center gap-0.5 text-[#7C3AED]">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => imageInputRef.current?.click()}
                   disabled={mediaState?.status === 'uploading'}
                   className="p-2 rounded-full hover:bg-[#7C3AED]/10 disabled:opacity-40 transition-colors"
-                  title="Add photos"
+                  title="Add photo"
                 >
                   <ImageIcon size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  disabled={mediaState?.status === 'uploading'}
+                  className="p-2 rounded-full hover:bg-[#7C3AED]/10 disabled:opacity-40 transition-colors"
+                  title="Add video (up to 100MB, 120s)"
+                >
+                  <Video size={17} />
                 </button>
                 <button
                   type="button"
@@ -496,7 +578,12 @@ const Home = () => {
                 )}
                 <button
                   onClick={handleCreatePost}
-                  disabled={(!postText.trim() && !mediaState?.mediaId) || isSubmitting || postText.length > 500 || mediaState?.status === 'uploading'}
+                  disabled={
+                    (!postText.trim() && !(mediaState?.type === 'image' && mediaState.mediaId) && !(mediaState?.type === 'video' && mediaState.videoId)) ||
+                    isSubmitting ||
+                    postText.length > 500 ||
+                    mediaState?.status === 'uploading'
+                  }
                   className="px-5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[14px] rounded-full transition-all shadow-sm active:scale-95 flex items-center gap-1.5"
                 >
                   {isSubmitting ? 'Posting...' : mediaState?.status === 'uploading' ? 'Uploading...' : 'Post'}

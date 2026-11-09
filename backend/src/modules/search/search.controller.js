@@ -1,6 +1,6 @@
 import pool from "../../config/db.js";
 import { ApiResponse } from "../../utils/ApiResponse.js";
-import { MEDIA_JSON_SELECT } from "../posts/post.controller.js";
+import { MEDIA_JSON_SELECT, VIDEO_JSON_SELECT } from "../posts/post.controller.js";
 
 // GET /api/v1/search
 export const searchAll = async (req, res, next) => {
@@ -114,7 +114,8 @@ export const searchAll = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           ${authSelect},
-          ${MEDIA_JSON_SELECT}
+          ${MEDIA_JSON_SELECT},
+          ${VIDEO_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id

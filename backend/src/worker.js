@@ -28,13 +28,17 @@ import pool from "./config/db.js";
 import redis from "./config/redis.js";
 import sharp from "sharp";
 import { getS3Buffer, putS3Object, buildPublicMediaUrl } from "./services/s3Service.js";
+import { processVideoJob } from "./services/videoProcessor.js";
 
-const ACTIVE_QUEUES = ["notifications", "feed_fanout", "media_processing"];
+const ACTIVE_QUEUES = ["notifications", "feed_fanout", "media_processing", "video_processing"];
 let isRunning = true;
 let activeJobsCount = 0;
 
 // Registry of job handlers
 const HANDLERS = {
+  video_processing: async (job) => {
+    await processVideoJob(job.data);
+  },
   media_processing: async (job) => {
     const { mediaId, userId, s3KeyRaw } = job.data;
     if (!mediaId || !s3KeyRaw) return;

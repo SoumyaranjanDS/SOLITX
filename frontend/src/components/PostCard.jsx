@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import api from '../api';
 import CommentModal from './CommentModal';
+import VideoPlayer from './VideoPlayer';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionText from './MentionText';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -366,6 +367,13 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                   <p className="text-[14px] sm:text-[15px] text-[#0F1419] mt-1 leading-[1.5] whitespace-pre-wrap break-words">
                     <MentionText text={cleanContent} />
                   </p>
+                )}
+
+                {/* Video Player (HLS Adaptive Stream / Faststart MP4) */}
+                {post.video && (
+                  <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
+                    <VideoPlayer video={post.video} videoId={post.video.id} />
+                  </div>
                 )}
 
                 {/* Structured Attached Media from S3 Pipeline */}

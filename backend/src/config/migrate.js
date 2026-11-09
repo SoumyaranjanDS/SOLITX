@@ -273,9 +273,43 @@ const runMigrations = async () => {
 
       ALTER TABLE posts ADD COLUMN IF NOT EXISTS has_media BOOLEAN DEFAULT FALSE;
       CREATE INDEX IF NOT EXISTS idx_posts_has_media ON posts (has_media);
+
+      -- Video Pipeline Tables & Indexes
+      CREATE TABLE IF NOT EXISTS videos (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        post_id UUID REFERENCES posts(id) ON DELETE SET NULL,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        s3_key_raw VARCHAR(500) NOT NULL,
+        hls_master_key VARCHAR(500),
+        download_key VARCHAR(500),
+        thumbnail_key VARCHAR(500),
+        original_filename VARCHAR(255),
+        mime_type VARCHAR(100),
+        file_size_bytes BIGINT,
+        duration_seconds NUMERIC(8,2),
+        width INTEGER,
+        height INTEGER,
+        status VARCHAR(50) DEFAULT 'initiated',
+        error_message TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_videos_post_id ON videos (post_id);
+      CREATE INDEX IF NOT EXISTS idx_videos_user_id ON videos (user_id);
+      CREATE INDEX IF NOT EXISTS idx_videos_status ON videos (status);
+
+      CREATE TABLE IF NOT EXISTS video_uploads (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        video_id UUID NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+        s3_upload_id VARCHAR(500) NOT NULL,
+        s3_key VARCHAR(500) NOT NULL,
+        total_parts INTEGER,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_video_uploads_video_id ON video_uploads (video_id);
     `);
     console.log(
-      "'media' table and 'posts.has_media' column verified successfully!",
+      "'media', 'videos', 'video_uploads' tables and 'posts.has_media' column verified successfully!",
     );
   } catch (error) {
     console.error("Migration failed:", error.message);

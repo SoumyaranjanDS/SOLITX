@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ImageIcon, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check, Loader2, AtSign } from 'lucide-react';
+import { X, ImageIcon, Video, Smile, Calendar, MapPin, Globe, Users, ChevronDown, Check, Loader2, AtSign } from 'lucide-react';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
+import { uploadVideoDirectToS3 } from '../utils/videoUpload';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionDropdown, { useMentionAutocomplete } from './MentionAutocomplete';
 
@@ -11,8 +12,9 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   
-  // Media Upload State
-  const fileInputRef = useRef(null);
+  // Media Upload State (Mutually exclusive: single photo OR single video)
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const [mediaState, setMediaState] = useState(null);
 
   // @Mention Autocomplete State
@@ -43,6 +45,8 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
         URL.revokeObjectURL(mediaState.previewUrl);
       }
       setMediaState(null);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+      if (videoInputRef.current) videoInputRef.current.value = '';
     } else {
       // Fetch available communities that user has joined or created
       api.get('/communities')
@@ -56,12 +60,19 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
 
   if (!isOpen) return null;
 
-  const handleFileChange = async (e) => {
+  // Single Image Handler (Mutual Exclusivity: resets any video)
+  const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (mediaState?.previewUrl) {
+      URL.revokeObjectURL(mediaState.previewUrl);
+    }
+    if (videoInputRef.current) videoInputRef.current.value = '';
+
     const previewUrl = URL.createObjectURL(file);
     setMediaState({
+      type: 'image',
       file,
       previewUrl,
       mediaId: null,
@@ -82,18 +93,61 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
     }
   };
 
+  // Single Video Handler (Mutual Exclusivity: resets any image)
+  const handleVideoChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (mediaState?.previewUrl) {
+      URL.revokeObjectURL(mediaState.previewUrl);
+    }
+    if (imageInputRef.current) imageInputRef.current.value = '';
+
+    const previewUrl = URL.createObjectURL(file);
+    setMediaState({
+      type: 'video',
+      file,
+      previewUrl,
+      videoId: null,
+      status: 'uploading',
+      progress: 0,
+      error: null,
+    });
+    setError('');
+
+    try {
+      const res = await uploadVideoDirectToS3(file, (percent) => {
+        setMediaState((prev) => (prev ? { ...prev, progress: percent } : null));
+      });
+      setMediaState((prev) =>
+        prev
+          ? {
+              ...prev,
+              videoId: res.videoId,
+              duration: res.duration,
+              status: 'ready',
+              progress: 100,
+            }
+          : null
+      );
+    } catch (err) {
+      setMediaState((prev) => (prev ? { ...prev, status: 'error', error: err.message } : null));
+      setError(err.message || 'Video upload failed');
+    }
+  };
+
   const handleRemoveMedia = () => {
     if (mediaState?.previewUrl) {
       URL.revokeObjectURL(mediaState.previewUrl);
     }
     setMediaState(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (imageInputRef.current) imageInputRef.current.value = '';
+    if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
   const handleSubmit = async () => {
-    if (isSubmitting || (!content.trim() && !mediaState?.mediaId)) return;
+    const hasMediaReady = (mediaState?.type === 'image' && mediaState.mediaId) || (mediaState?.type === 'video' && mediaState.videoId);
+    if (isSubmitting || (!content.trim() && !hasMediaReady)) return;
     if (mediaState && mediaState.status === 'uploading') return;
 
     try {
@@ -102,7 +156,8 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
       const payload = { 
         content: content.trim(),
         community_id: selectedCommunityId || undefined,
-        media_ids: mediaState?.mediaId ? [mediaState.mediaId] : undefined,
+        media_ids: mediaState?.type === 'image' && mediaState?.mediaId ? [mediaState.mediaId] : undefined,
+        video_id: mediaState?.type === 'video' && mediaState?.videoId ? mediaState.videoId : undefined,
       };
       const res = await api.post('/posts', payload);
       if (res.data?.data?.post) {
@@ -140,7 +195,12 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
           </button>
           <button
             onClick={handleSubmit}
-            disabled={(!content.trim() && !mediaState?.mediaId) || isSubmitting || content.length > 500 || mediaState?.status === 'uploading'}
+            disabled={
+              (!content.trim() && !(mediaState?.type === 'image' && mediaState.mediaId) && !(mediaState?.type === 'video' && mediaState.videoId)) ||
+              isSubmitting ||
+              content.length > 500 ||
+              mediaState?.status === 'uploading'
+            }
             className="px-5 py-1.5 bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[14px] rounded-full transition-all shadow-sm flex items-center gap-2"
           >
             {isSubmitting ? 'Posting...' : mediaState?.status === 'uploading' ? 'Uploading...' : 'Post'}
@@ -256,34 +316,43 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
               />
             </div>
 
-            {/* Media Image Preview Container */}
+            {/* Media Preview Container (Image OR Video) */}
             {mediaState && (
-              <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-[#EFF3F4] bg-[#0F1419]/5 max-h-[260px] flex items-center justify-center group/img">
-                <img
-                  src={mediaState.previewUrl}
-                  alt="Upload preview"
-                  className="w-full h-full max-h-[260px] object-cover"
-                />
+              <div className="relative mt-2 mb-3 rounded-2xl overflow-hidden border border-[#EFF3F4] bg-[#0F1419]/5 max-h-[300px] flex items-center justify-center group/img">
+                {mediaState.type === 'video' ? (
+                  <video
+                    src={mediaState.previewUrl}
+                    controls
+                    playsInline
+                    className="w-full max-h-[300px] object-contain bg-black"
+                  />
+                ) : (
+                  <img
+                    src={mediaState.previewUrl}
+                    alt="Upload preview"
+                    className="w-full h-full max-h-[260px] object-cover"
+                  />
+                )}
 
-                {/* Remove Image Button */}
+                {/* Remove Media Button */}
                 <button
                   type="button"
                   onClick={handleRemoveMedia}
-                  className="absolute top-2.5 right-2.5 p-1.5 bg-black/70 hover:bg-black/90 text-white rounded-full backdrop-blur-md transition-all shadow-md active:scale-95"
-                  title="Remove image"
+                  className="absolute top-2.5 right-2.5 p-1.5 bg-black/70 hover:bg-black/90 text-white rounded-full backdrop-blur-md transition-all shadow-md active:scale-95 z-20"
+                  title="Remove attachment"
                 >
                   <X size={16} />
                 </button>
 
                 {/* Uploading progress overlay */}
                 {mediaState.status === 'uploading' && (
-                  <div className="absolute inset-0 bg-black/65 backdrop-blur-md flex flex-col items-center justify-center text-white px-6 transition-all duration-200">
+                  <div className="absolute inset-0 bg-black/65 backdrop-blur-md flex flex-col items-center justify-center text-white px-6 transition-all duration-200 z-10">
                     <div className="relative mb-3 flex items-center justify-center">
                       <div className="w-12 h-12 rounded-full border-2 border-violet-400/20 border-t-violet-400 animate-spin" />
                       <div className="absolute inset-0 rounded-full bg-violet-500/10 animate-ping opacity-30" />
                     </div>
                     <div className="flex items-center gap-1.5 text-[14px] font-bold text-white tracking-wide">
-                      <span>Uploading</span>
+                      <span>Uploading {mediaState.type === 'video' ? 'video' : 'photo'}</span>
                       <span className="flex tracking-widest animate-pulse">...</span>
                       <span className="text-[12px] font-semibold text-violet-300 ml-1 tabular-nums">
                         {mediaState.progress}%
@@ -300,15 +369,19 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
 
                 {/* Ready Badge */}
                 {mediaState.status === 'ready' && (
-                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold rounded-full flex items-center gap-1.5 shadow-md border border-white/10">
+                  <div className="absolute bottom-2.5 left-2.5 px-3 py-1 bg-black/60 backdrop-blur-md text-white text-[11px] font-semibold rounded-full flex items-center gap-1.5 shadow-md border border-white/10 z-10">
                     <Check size={12} className="text-emerald-400 stroke-[3]" />
-                    <span>Photo attached</span>
+                    <span>
+                      {mediaState.type === 'video'
+                        ? `Video attached (${Math.round(mediaState.duration || 0)}s)`
+                        : 'Photo attached'}
+                    </span>
                   </div>
                 )}
 
                 {/* Error State */}
                 {mediaState.status === 'error' && (
-                  <div className="absolute inset-0 bg-red-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-white px-4 text-center">
+                  <div className="absolute inset-0 bg-red-950/85 backdrop-blur-sm flex flex-col items-center justify-center text-white px-4 text-center z-10">
                     <p className="text-[13px] font-bold text-red-200 mb-2">
                       {mediaState.error || 'Upload failed'}
                     </p>
@@ -330,13 +403,20 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
               </p>
             )}
 
-            {/* Hidden File Input */}
+            {/* Hidden File Inputs (Mutually exclusive: image vs video) */}
             <input
-              ref={fileInputRef}
+              ref={imageInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
               className="hidden"
-              onChange={handleFileChange}
+              onChange={handleImageChange}
+            />
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/quicktime,video/webm,video/x-m4v"
+              className="hidden"
+              onChange={handleVideoChange}
             />
 
             {/* Footer Bar */}
@@ -344,12 +424,21 @@ const ComposeModal = ({ isOpen, onClose, onPostCreated, defaultCommunityId = nul
               <div className="flex items-center gap-1 text-[#7C3AED]">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => imageInputRef.current?.click()}
                   disabled={mediaState?.status === 'uploading'}
                   className="p-2 rounded-full hover:bg-[#7C3AED]/10 disabled:opacity-40 transition-colors"
-                  title="Add photos"
+                  title="Add photo"
                 >
                   <ImageIcon size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => videoInputRef.current?.click()}
+                  disabled={mediaState?.status === 'uploading'}
+                  className="p-2 rounded-full hover:bg-[#7C3AED]/10 disabled:opacity-40 transition-colors"
+                  title="Add video (up to 100MB, 120s)"
+                >
+                  <Video size={18} />
                 </button>
                 <button
                   type="button"

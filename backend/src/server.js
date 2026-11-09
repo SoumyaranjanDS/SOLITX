@@ -69,6 +69,7 @@ import postRoutes from "./modules/posts/post.routes.js";
 import listRoutes from "./modules/lists/list.routes.js";
 import communityRoutes from "./modules/communities/community.routes.js";
 import mediaRoutes from "./modules/media/media.routes.js";
+import videoRoutes from "./modules/videos/video.routes.js";
 import searchRoutes from "./modules/search/search.routes.js";
 import { getPostPreviewHtml } from "./modules/posts/post.controller.js";
 import pool from "./config/db.js";
@@ -80,6 +81,7 @@ app.use("/api/v1/posts", postRoutes);
 app.use("/api/v1/lists", listRoutes);
 app.use("/api/v1/communities", communityRoutes);
 app.use("/api/v1/media", mediaRoutes);
+app.use("/api/v1/videos", videoRoutes);
 app.use("/api/v1/search", searchRoutes);
 
 // Social Media Share Link (Generates Dynamic Open Graph Previews)

@@ -23,6 +23,7 @@ import AppShell, { SolitxLogo } from '../components/AppShell';
 import AuthRequiredModal from '../components/AuthRequiredModal';
 import { redirectToAuth } from '../utils/authRedirect';
 import { formatViews } from '../components/PostCard';
+import VideoPlayer from '../components/VideoPlayer';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
 import MentionText from '../components/MentionText';
@@ -600,6 +601,13 @@ const PostDetail = () => {
                 <p className="text-[18px] sm:text-[20px] text-[#0F1419] leading-relaxed my-3 whitespace-pre-wrap break-words">
                   <MentionText text={post.content} />
                 </p>
+              )}
+
+              {/* Video Player */}
+              {post.video && (
+                <div className="my-3">
+                  <VideoPlayer video={post.video} videoId={post.video.id} />
+                </div>
               )}
 
               {/* Media rendering (S3 pipeline or markdown/link fallback) */}

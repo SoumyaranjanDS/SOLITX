@@ -28,10 +28,31 @@ export const MEDIA_JSON_SELECT = `
   ) as media
 `;
 
+export const VIDEO_JSON_SELECT = `
+  (
+    SELECT json_build_object(
+      'id', v.id,
+      'status', v.status,
+      'hls_url', CASE WHEN v.hls_master_key IS NOT NULL THEN '${mediaBaseUrl}' || v.hls_master_key ELSE NULL END,
+      'download_url', CASE WHEN v.download_key IS NOT NULL THEN '${mediaBaseUrl}' || v.download_key ELSE NULL END,
+      'thumbnail_url', CASE WHEN v.thumbnail_key IS NOT NULL THEN '${mediaBaseUrl}' || v.thumbnail_key ELSE NULL END,
+      'duration_seconds', v.duration_seconds,
+      'width', v.width,
+      'height', v.height,
+      'original_filename', v.original_filename,
+      'file_size_bytes', v.file_size_bytes,
+      'error_message', v.error_message
+    )
+    FROM videos v
+    WHERE v.post_id = p.id
+    LIMIT 1
+  ) as video
+`;
+
 // ─── 1. Create Post ──────────────────────────────────────────────────────────
 export const createPost = async (req, res, next) => {
   try {
-    const { content, category: reqCategory, community_id, media_ids } = req.body;
+    const { content, category: reqCategory, community_id, media_ids, video_id } = req.body;
     const userId = req.user.id;
 
     if (!content || typeof content !== "string" || content.trim().length === 0) {
@@ -40,6 +61,19 @@ export const createPost = async (req, res, next) => {
 
     if (content.trim().length > 500) {
       throw new AppError(400, "Post content cannot exceed 500 characters");
+    }
+
+    // Mutual Exclusivity & Single Media Enforcement:
+    // A single post can have EITHER an image OR a video, not multiple media, only single either-or.
+    const hasImages = Array.isArray(media_ids) && media_ids.length > 0;
+    const hasVideo = Boolean(video_id);
+
+    if (hasImages && hasVideo) {
+      throw new AppError(400, "A post can contain either an image or a video, not both.");
+    }
+
+    if (hasImages && media_ids.length > 1) {
+      throw new AppError(400, "A post can only contain a single image.");
     }
 
     // Auto-detect topic category from text & hashtags if not explicitly provided
@@ -86,7 +120,20 @@ export const createPost = async (req, res, next) => {
       }
     }
 
-    const hasMedia = Array.isArray(media_ids) && media_ids.length > 0;
+    // Check video validity if present
+    let rawVideo = null;
+    if (hasVideo) {
+      const videoRes = await pool.query(
+        `SELECT * FROM videos WHERE id = $1 AND user_id = $2`,
+        [video_id, userId]
+      );
+      if (videoRes.rowCount === 0) {
+        throw new AppError(404, "Selected video not found or permission denied.");
+      }
+      rawVideo = videoRes.rows[0];
+    }
+
+    const hasMedia = hasImages || hasVideo;
     const insertQuery = `
       INSERT INTO posts (user_id, content, views_count, category, community_id, has_media)
       VALUES ($1, $2, 1, $3, $4, $5)
@@ -95,9 +142,11 @@ export const createPost = async (req, res, next) => {
     const result = await pool.query(insertQuery, [userId, content.trim(), category, validCommunityId, hasMedia]);
     const post = result.rows[0];
 
-    // Link uploaded media records to this post
+    // Link uploaded media record to this post
     let attachedMedia = [];
-    if (hasMedia) {
+    let attachedVideo = null;
+
+    if (hasImages) {
       const mediaUpdateRes = await pool.query(
         `UPDATE media 
          SET post_id = $1, updated_at = NOW() 
@@ -111,6 +160,24 @@ export const createPost = async (req, res, next) => {
         [post.id, media_ids, userId]
       );
       attachedMedia = mediaUpdateRes.rows;
+    } else if (hasVideo && rawVideo) {
+      await pool.query(
+        `UPDATE videos SET post_id = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3`,
+        [post.id, video_id, userId]
+      );
+      attachedVideo = {
+        id: rawVideo.id,
+        status: rawVideo.status,
+        hls_url: rawVideo.hls_master_key ? `${mediaBaseUrl}${rawVideo.hls_master_key}` : null,
+        download_url: rawVideo.download_key ? `${mediaBaseUrl}${rawVideo.download_key}` : null,
+        thumbnail_url: rawVideo.thumbnail_key ? `${mediaBaseUrl}${rawVideo.thumbnail_key}` : null,
+        duration_seconds: rawVideo.duration_seconds,
+        width: rawVideo.width,
+        height: rawVideo.height,
+        original_filename: rawVideo.original_filename,
+        file_size_bytes: rawVideo.file_size_bytes,
+        error_message: rawVideo.error_message,
+      };
     }
 
     // Fetch author info to return complete post object for immediate UI render
@@ -134,6 +201,7 @@ export const createPost = async (req, res, next) => {
       has_liked: false,
       has_bookmarked: false,
       media: attachedMedia,
+      video: attachedVideo,
     };
 
     // Dispatch mention notifications (@username in post)
@@ -246,7 +314,9 @@ export const getFeed = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
           EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked,
-          ${MEDIA_JSON_SELECT}
+          ${MEDIA_JSON_SELECT},
+
+          ${VIDEO_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -274,7 +344,9 @@ export const getFeed = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
           false as has_bookmarked,
-          ${MEDIA_JSON_SELECT}
+          ${MEDIA_JSON_SELECT},
+
+          ${VIDEO_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -353,7 +425,9 @@ export const getFeed = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         ${selectLiked},
         ${selectBookmarked},
-        ${MEDIA_JSON_SELECT}
+        ${MEDIA_JSON_SELECT},
+
+        ${VIDEO_JSON_SELECT}
       FROM posts p
       JOIN users u ON p.user_id = u.id
       LEFT JOIN communities comm ON p.community_id = comm.id
@@ -422,6 +496,8 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
               ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -448,6 +524,8 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
               ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -476,6 +554,8 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
               ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -502,6 +582,8 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
               ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT},
               lk.created_at as liked_at
             FROM likes lk
             JOIN posts p ON lk.post_id = p.id
@@ -657,7 +739,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
@@ -684,7 +768,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
@@ -712,7 +798,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
@@ -739,7 +827,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
@@ -770,7 +860,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2 AND p.created_at < $3
@@ -795,7 +887,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $2
@@ -822,7 +916,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1 AND p.created_at < $2
@@ -847,7 +943,9 @@ export const getUserPosts = async (req, res, next) => {
               (SELECT COUNT(*)::int FROM likes l WHERE l.post_id = p.id) as likes_count,
               (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
               false as has_liked,
-              ${MEDIA_JSON_SELECT}
+              ${MEDIA_JSON_SELECT},
+
+              ${VIDEO_JSON_SELECT}
             FROM posts p
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
@@ -925,7 +1023,9 @@ export const getPostById = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
           EXISTS(SELECT 1 FROM bookmarks b WHERE b.post_id = p.id AND b.user_id = $1) as has_bookmarked,
-          ${MEDIA_JSON_SELECT}
+          ${MEDIA_JSON_SELECT},
+
+          ${VIDEO_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -954,7 +1054,9 @@ export const getPostById = async (req, res, next) => {
           (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
           false as has_liked,
           false as has_bookmarked,
-          ${MEDIA_JSON_SELECT}
+          ${MEDIA_JSON_SELECT},
+
+          ${VIDEO_JSON_SELECT}
         FROM posts p
         JOIN users u ON p.user_id = u.id
         LEFT JOIN communities comm ON p.community_id = comm.id
@@ -1051,6 +1153,7 @@ export const deletePost = async (req, res, next) => {
       throw new AppError(403, "Forbidden: You can only delete your own posts");
     }
 
+    await pool.query("DELETE FROM videos WHERE post_id = $1", [id]);
     await pool.query("DELETE FROM posts WHERE id = $1", [id]);
 
     return res.status(200).json(
@@ -1475,7 +1578,9 @@ export const getBookmarks = async (req, res, next) => {
         (SELECT COUNT(*)::int FROM comments c WHERE c.post_id = p.id) as replies_count,
         EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = $1) as has_liked,
         true as has_bookmarked,
-        ${MEDIA_JSON_SELECT}
+        ${MEDIA_JSON_SELECT},
+
+        ${VIDEO_JSON_SELECT}
       FROM bookmarks b
       JOIN posts p ON b.post_id = p.id
       JOIN users u ON p.user_id = u.id
@@ -1503,7 +1608,8 @@ export const getPostPreviewHtml = async (req, res, next) => {
         u.name as author_name,
         u.username,
         u.avatar_url,
-        ${MEDIA_JSON_SELECT}
+        ${MEDIA_JSON_SELECT},
+        ${VIDEO_JSON_SELECT}
       FROM posts p
       JOIN users u ON p.user_id = u.id
       WHERE p.id = $1;
@@ -1518,11 +1624,13 @@ export const getPostPreviewHtml = async (req, res, next) => {
     const title = `${author} (@${post.username}) on SOLITX`;
     const description = (post.content || "").slice(0, 240);
     
-    // Check if post has media image
+    // Check if post has media image or video thumbnail
     let imageUrl = "https://solitx.soumya.site/og-image.png";
     if (post.media && Array.isArray(post.media) && post.media.length > 0) {
       const firstMedia = post.media[0];
       imageUrl = firstMedia.url_full || firstMedia.url_feed || firstMedia.url_raw || imageUrl;
+    } else if (post.video && post.video.thumbnail_url) {
+      imageUrl = post.video.thumbnail_url;
     }
 
     const postUrl = `https://solitx.soumya.site/post/${post.id}`;
