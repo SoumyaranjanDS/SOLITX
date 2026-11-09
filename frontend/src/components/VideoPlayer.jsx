@@ -34,8 +34,6 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
-  // On-demand chunk loading (prevents eating bandwidth while scrolling)
-  const hasStartedLoadRef = useRef(false);
 
   // Double-tap seek feedback animation
   const [seekFeedback, setSeekFeedback] = useState(null); // { type: 'rewind' | 'forward', time: 10 }
@@ -144,14 +142,13 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
         hlsRef.current.destroy();
       }
 
-      // YouTube-like pre-buffering configuration (On-Demand: only loads chunks on Play)
+      // YouTube-like pre-buffering configuration
       const hls = new Hls({
         capLevelToPlayerSize: false, // Never cap resolution to small screen size
-        autoStartLoad: false, // DO NOT download video chunks on feed scroll! Saves data!
-        startLevel: -1, // Auto level selection
-        // Aggressive forward pre-chunk downloading
-        maxBufferLength: 60, // Keep downloading chunks up to 60s ahead
-        maxMaxBufferLength: 120, // Buffer up to 120s (can buffer the entire clip!)
+        autoStartLoad: true, // Attach manifest and media source immediately for instant play
+        startFragPrefetch: false, // Don't prefetch chunks until needed
+        maxBufferLength: 4, // Keep buffer small (only 1 short chunk) on initial load to save data
+        maxMaxBufferLength: 8,
         maxBufferSize: 60 * 1024 * 1024, // 60MB memory buffer
         backBufferLength: 30, // Retain 30s behind playhead for instant rewind
         enableWorker: true,
@@ -302,11 +299,11 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
               setIsPlaying(false);
             }
             // Stop downloading chunks when user scrolls past video
-            if (hlsRef.current && hasStartedLoadRef.current) {
+            if (hlsRef.current) {
               hlsRef.current.stopLoad();
             }
-          } else if (entry.isIntersecting && hasStartedLoadRef.current) {
-            // Resume loading chunks if user scrolls back
+          } else if (entry.isIntersecting) {
+            // Resume loading chunks if user scrolls back into view
             if (hlsRef.current) {
               hlsRef.current.startLoad();
             }
@@ -342,33 +339,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     }
   }, [showQualityMenu]);
 
-  // On-demand chunk loader & play (zero chunks downloaded until user taps Play)
-  const startLoadingAndPlay = useCallback(async () => {
-    const v = videoRef.current;
-    if (!v) return;
-
-    resetControlsTimeout();
-    if (!hasStartedLoadRef.current) {
-      hasStartedLoadRef.current = true;
-      if (hlsRef.current) {
-        setIsBuffering(true);
-        hlsRef.current.startLoad(0);
-      } else if (!v.src) {
-        v.src = video?.hls_url || video?.download_url || "";
-      }
-    }
-
-    try {
-      await v.play();
-      setIsPlaying(true);
-      setIsBuffering(false);
-    } catch (err) {
-      console.warn("[VideoPlayer] Play error:", err.message);
-      setIsBuffering(false);
-    }
-  }, [resetControlsTimeout, video?.hls_url, video?.download_url]);
-
-  // Toggle play/pause
+  // Toggle play/pause (Click anywhere on video or play button)
   const togglePlay = (e) => {
     e?.stopPropagation();
     const v = videoRef.current;
@@ -376,14 +347,43 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
 
     resetControlsTimeout();
     if (v.paused) {
-      startLoadingAndPlay();
+      // Aggressive YouTube buffer on play
+      if (hlsRef.current) {
+        hlsRef.current.config.maxBufferLength = 60;
+        hlsRef.current.config.maxMaxBufferLength = 120;
+        hlsRef.current.startLoad();
+      }
+      setIsBuffering(v.readyState < 3);
+
+      v.play()
+        .then(() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        })
+        .catch((err) => {
+          console.warn("[VideoPlayer] Play error:", err.message);
+          // If play failed due to browser audio autoplay policy, fallback to muted play
+          if (err.name === "NotAllowedError") {
+            v.muted = true;
+            setIsMuted(true);
+            v.play()
+              .then(() => {
+                setIsPlaying(true);
+                setIsBuffering(false);
+              })
+              .catch(() => setIsBuffering(false));
+          } else {
+            setIsBuffering(false);
+          }
+        });
     } else {
       v.pause();
       setIsPlaying(false);
+      setIsBuffering(false);
     }
   };
 
-  // Mobile Touch & Tap Interaction (Tap to toggle controls, double-tap to seek ±10s)
+  // Click anywhere on video screen: Toggle Play/Pause (or double tap to seek ±10s)
   const handleContainerClick = (e) => {
     e.stopPropagation();
     const now = Date.now();
@@ -395,17 +395,15 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const isDoubleTap = now - lastTapRef.current.time < 300;
 
     if (isDoubleTap) {
-      // Double Tap: Left 35% rewinds 10s, Right 35% forwards 10s
+      // Double Tap: Left 38% rewinds 10s, Right 38% forwards 10s
       const width = rect.width;
       const v = videoRef.current;
       if (v) {
         if (clickX < width * 0.38) {
-          // Rewind 10s
           v.currentTime = Math.max(0, v.currentTime - 10);
           setSeekFeedback({ type: "rewind", amount: 10 });
           setTimeout(() => setSeekFeedback(null), 650);
         } else if (clickX > width * 0.62) {
-          // Forward 10s
           v.currentTime = Math.min(v.duration || duration, v.currentTime + 10);
           setSeekFeedback({ type: "forward", amount: 10 });
           setTimeout(() => setSeekFeedback(null), 650);
@@ -415,14 +413,9 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       }
       lastTapRef.current = { time: 0, x: 0 };
     } else {
-      // Single Tap: Toggle controls visibility
+      // Single Click / Tap ANYWHERE on video screen: TOGGLE PLAY / PAUSE!
       lastTapRef.current = { time: now, x: clickX };
-      if (showControls) {
-        setShowControls(false);
-        setShowQualityMenu(false);
-      } else {
-        resetControlsTimeout();
-      }
+      togglePlay();
     }
   };
 
@@ -622,13 +615,13 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       className={`group relative isolate z-0 w-full rounded-2xl overflow-hidden bg-black select-none cursor-pointer flex items-center justify-center max-h-[520px] sm:max-h-[580px] ${className}`}
       style={getAspectRatioStyle()}
     >
-      {/* Video Element (preload="none" prevents downloading chunks before user plays) */}
+      {/* Video Element */}
       <video
         ref={videoRef}
         poster={video?.thumbnail_url || undefined}
         onEnded={() => setIsPlaying(false)}
         playsInline
-        preload="none"
+        preload="metadata"
         className="w-full h-full object-contain pointer-events-none"
       />
 
