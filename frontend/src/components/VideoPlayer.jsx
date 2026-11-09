@@ -63,6 +63,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
   useEffect(() => {
     if (initialVideo) {
       setVideo(initialVideo);
+      setIsBuffering(false);
     }
   }, [initialVideo]);
 
@@ -174,17 +175,22 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
         setQualities(levels);
       });
 
-      // Update buffer visually as chunks arrive
+      // Update buffer visually as chunks arrive & clear loading indicator
       hls.on(Hls.Events.BUFFER_APPENDED, () => {
         updateBufferState();
         setIsBuffering(false);
       });
 
-      hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        setIsBuffering(false);
+      });
+
+      hls.on(Hls.Events.LEVEL_SWITCHED, () => {
         setIsBuffering(false);
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
+        setIsBuffering(false);
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -233,6 +239,14 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const onPause = () => {
       setIsPlaying(false);
       setShowControls(true);
+      setIsBuffering(false);
+    };
+    const onCanPlay = () => setIsBuffering(false);
+    const onLoadedData = () => setIsBuffering(false);
+    const onSeeked = () => setIsBuffering(false);
+    const onError = () => {
+      setIsBuffering(false);
+      setIsPlaying(false);
     };
     const onTimeUpdate = () => {
       setCurrentTime(v.currentTime);
@@ -244,11 +258,17 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const onLoadedMetadata = () => {
       setDuration(v.duration || video?.duration_seconds || 0);
       updateBufferState();
+      setIsBuffering(false);
     };
 
     v.addEventListener("waiting", onWaiting);
     v.addEventListener("playing", onPlaying);
     v.addEventListener("pause", onPause);
+    v.addEventListener("canplay", onCanPlay);
+    v.addEventListener("canplaythrough", onCanPlay);
+    v.addEventListener("loadeddata", onLoadedData);
+    v.addEventListener("seeked", onSeeked);
+    v.addEventListener("error", onError);
     v.addEventListener("timeupdate", onTimeUpdate);
     v.addEventListener("progress", onProgress);
     v.addEventListener("loadedmetadata", onLoadedMetadata);
@@ -257,6 +277,11 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       v.removeEventListener("waiting", onWaiting);
       v.removeEventListener("playing", onPlaying);
       v.removeEventListener("pause", onPause);
+      v.removeEventListener("canplay", onCanPlay);
+      v.removeEventListener("canplaythrough", onCanPlay);
+      v.removeEventListener("loadeddata", onLoadedData);
+      v.removeEventListener("seeked", onSeeked);
+      v.removeEventListener("error", onError);
       v.removeEventListener("timeupdate", onTimeUpdate);
       v.removeEventListener("progress", onProgress);
       v.removeEventListener("loadedmetadata", onLoadedMetadata);
@@ -336,8 +361,10 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     try {
       await v.play();
       setIsPlaying(true);
+      setIsBuffering(false);
     } catch (err) {
       console.warn("[VideoPlayer] Play error:", err.message);
+      setIsBuffering(false);
     }
   }, [resetControlsTimeout, video?.hls_url, video?.download_url]);
 

@@ -447,18 +447,6 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                     />
                   </div>
                 )}
-
-                {/* Placeholder Media Skeleton when has_media is true but media is resolving */}
-                {post.has_media && !post.video && !attachedMedia && !mediaUrl && (
-                  <div className="mt-2.5 w-full h-48 sm:h-56 rounded-2xl bg-gray-100/90 border border-gray-200/70 animate-pulse flex flex-col items-center justify-center text-gray-400 gap-2">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-400">
-                      <Loader2 size={18} className="animate-spin" />
-                    </div>
-                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                      Loading media...
-                    </span>
-                  </div>
-                )}
               </>
             );
           })()}
