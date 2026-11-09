@@ -22,3 +22,4 @@ router.get("/:id/status", getVideoStatus);
 router.get("/:id", getVideoById);
 
 export default router;
+

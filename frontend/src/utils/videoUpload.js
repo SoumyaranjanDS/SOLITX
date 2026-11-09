@@ -156,3 +156,4 @@ export async function uploadVideoDirectToS3(file, onProgress) {
     throw uploadErr;
   }
 }
+

@@ -408,3 +408,4 @@ export async function processVideoJob(jobData) {
     await releaseTranscodingLock(videoId);
   }
 }
+

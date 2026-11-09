@@ -3,7 +3,7 @@
 ## Status
 Accepted
 
-## Context
+## Context :-
 SOLITX requires secure, authenticated API requests to allow users to publish and view dispatches on the editorial network.
 
 ## Problem

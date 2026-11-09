@@ -478,3 +478,4 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
 };
 
 export default VideoPlayer;
+
