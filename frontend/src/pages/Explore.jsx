@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
+import FeedSkeleton from '../components/FeedSkeleton';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -417,7 +418,7 @@ const Explore = () => {
       <div className="min-h-screen bg-white">
         
         {/* Sticky Search Header */}
-        <div className="sticky top-0 bg-white/95 backdrop-blur-md z-20 border-b border-[#EFF3F4] px-4 pt-2.5 pb-2">
+        <div className="sticky top-0 bg-white/95 backdrop-blur-md z-30 border-b border-[#EFF3F4] px-4 pt-2.5 pb-2">
           <form onSubmit={handleSearchSubmit} className="relative flex items-center">
             <Search size={18} className="absolute left-3.5 text-[#536471] pointer-events-none" />
             <input
@@ -581,10 +582,7 @@ const Explore = () => {
 
         {/* Content Views */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-3 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
-            <p className="text-[14px] text-[#536471]">Searching SOLITX network...</p>
-          </div>
+          <FeedSkeleton count={3} />
         ) : queryFromUrl && !hasAnyResults ? (
           <div className="text-center py-20 px-4">
             <div className="w-14 h-14 bg-purple-50 text-[#7C3AED] rounded-full flex items-center justify-center mx-auto mb-3">

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import AppShell, { SolitxLogo } from '../components/AppShell';
 import PostCard from '../components/PostCard';
+import FeedSkeleton from '../components/FeedSkeleton';
 import OnboardingModal from '../components/OnboardingModal';
 import AuthRequiredModal from '../components/AuthRequiredModal';
 import api from '../api';
@@ -308,8 +309,8 @@ const Home = () => {
 
   return (
     <AppShell rightSidebar>
-      {/* Sticky Top Header */}
-      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-[#EFF3F4]">
+      {/* Sticky Top Header (z-30 ensures video controls never leak over top on scroll) */}
+      <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-[#EFF3F4]">
         {/* Mobile Header Row */}
         <div className="md:hidden flex items-center justify-between px-4 h-[53px]">
           {user?.username ? (
@@ -618,19 +619,8 @@ const Home = () => {
       {/* Feed Timeline */}
       <div className="pb-[72px] md:pb-12">
         {loading && posts.length === 0 ? (
-          // Skeletons
-          <div className="divide-y divide-[#EFF3F4]">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="flex gap-3 px-4 py-4 animate-pulse">
-                <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
-                <div className="flex-1 space-y-2.5">
-                  <div className="h-4 bg-gray-200 rounded w-1/4" />
-                  <div className="h-3 bg-gray-200 rounded w-3/4" />
-                  <div className="h-3 bg-gray-200 rounded w-1/2" />
-                </div>
-              </div>
-            ))}
-          </div>
+          // Realistic Rich Feed Skeletons (includes photo & video placeholders)
+          <FeedSkeleton />
         ) : posts.length === 0 ? (
           // Empty State
           <div className="flex flex-col items-center justify-center p-12 text-center">

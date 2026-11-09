@@ -17,7 +17,9 @@ import {
   ChevronUp,
   ThumbsUp,
   MessageSquare,
-  BarChart2
+  BarChart2,
+  ImageIcon,
+  Loader2
 } from 'lucide-react';
 import AppShell, { SolitxLogo } from '../components/AppShell';
 import AuthRequiredModal from '../components/AuthRequiredModal';
@@ -443,16 +445,23 @@ const PostDetail = () => {
 
         {/* ── Loading Skeleton ── */}
         {loading && (
-          <div className="p-4 sm:p-6 space-y-4 animate-pulse">
+          <div className="p-4 sm:p-6 space-y-4 animate-pulse select-none">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gray-200" />
+              <div className="w-12 h-12 rounded-full bg-gray-200 flex-shrink-0" />
               <div className="space-y-2 flex-1">
                 <div className="h-4 bg-gray-200 rounded w-1/4" />
                 <div className="h-3 bg-gray-200 rounded w-1/6" />
               </div>
             </div>
-            <div className="h-16 bg-gray-200 rounded-xl w-full" />
-            <div className="h-6 bg-gray-200 rounded w-1/3" />
+            <div className="h-14 bg-gray-200 rounded-xl w-full" />
+            {/* Rich Media Placeholder Skeleton */}
+            <div className="w-full h-64 sm:h-80 rounded-2xl bg-gray-200/80 border border-gray-300/40 flex flex-col items-center justify-center text-gray-400 gap-2">
+              <div className="w-12 h-12 rounded-2xl bg-gray-300/60 flex items-center justify-center">
+                <ImageIcon size={24} className="opacity-60 text-gray-500" />
+              </div>
+              <span className="text-[11px] font-semibold text-gray-400 tracking-wider uppercase">Loading post...</span>
+            </div>
+            <div className="h-5 bg-gray-200 rounded w-1/3" />
           </div>
         )}
 

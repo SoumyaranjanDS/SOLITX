@@ -11,7 +11,9 @@ import {
   Check, 
   X,
   BarChart2,
-  Bookmark
+  Bookmark,
+  ImageIcon,
+  Loader2
 } from 'lucide-react';
 import api from '../api';
 import CommentModal from './CommentModal';
@@ -48,6 +50,39 @@ export const formatViews = (views) => {
   }
   const m = (count / 1000000).toFixed(1);
   return `${m.endsWith('.0') ? m.slice(0, -2) : m}M`;
+};
+
+// Image with smooth skeleton shimmer to prevent Layout Shifts (CLS)
+const PostImage = ({ src, alt, onClick, isProcessing }) => {
+  const [loaded, setLoaded] = useState(false);
+
+  return (
+    <div
+      onClick={onClick}
+      className="relative rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[420px] bg-gray-100 group/img cursor-zoom-in"
+    >
+      {!loaded && (
+        <div className="w-full h-56 sm:h-64 bg-gray-200/80 animate-pulse flex flex-col items-center justify-center text-gray-400 gap-1.5 select-none">
+          <ImageIcon size={26} className="opacity-40" />
+          <span className="text-[10px] font-bold text-gray-400 tracking-wider uppercase">Photo</span>
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        className={`w-full h-full object-cover max-h-[420px] hover:opacity-95 transition-opacity duration-300 ${
+          loaded ? 'opacity-100 block' : 'opacity-0 absolute inset-0 pointer-events-none'
+        }`}
+        loading="lazy"
+      />
+      {isProcessing && (
+        <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold rounded-full z-10">
+          Optimizing WebP...
+        </div>
+      )}
+    </div>
+  );
 };
 
 const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
@@ -384,26 +419,16 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
                       const fullSrc = m.url_full || m.url_feed || m.url_thumb || m.url_raw;
                       if (!displaySrc) return null;
                       return (
-                        <div
+                        <PostImage
                           key={m.id || displaySrc}
+                          src={displaySrc}
+                          alt="Post attachment"
+                          isProcessing={m.status === 'processing'}
                           onClick={(e) => {
                             e.stopPropagation();
                             setLightboxImage(fullSrc);
                           }}
-                          className="rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[420px] bg-black/5 relative group/img cursor-zoom-in"
-                        >
-                          <img
-                            src={displaySrc}
-                            alt="Post attachment"
-                            className="w-full h-full object-cover max-h-[420px] hover:opacity-95 transition-opacity"
-                            loading="lazy"
-                          />
-                          {m.status === 'processing' && (
-                            <div className="absolute top-2 left-2 px-2.5 py-1 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold rounded-full">
-                              Optimizing WebP...
-                            </div>
-                          )}
-                        </div>
+                        />
                       );
                     })}
                   </div>
@@ -411,20 +436,27 @@ const PostCard = ({ post, onNavigate, onPostDeleted, onPostUpdated }) => {
 
                 {/* Fallback Regex URL Media */}
                 {!attachedMedia && mediaUrl && (
-                  <div
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLightboxImage(mediaUrl);
-                    }}
-                    className="mt-2.5 rounded-2xl overflow-hidden border border-[#EFF3F4] max-h-[380px] bg-black/5 cursor-zoom-in"
-                  >
-                    <img
+                  <div className="mt-2.5">
+                    <PostImage
                       src={mediaUrl}
                       alt="Post attachment"
-                      className="w-full h-full object-cover max-h-[380px] hover:opacity-95 transition-opacity"
-                      loading="lazy"
-                      onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setLightboxImage(mediaUrl);
+                      }}
                     />
+                  </div>
+                )}
+
+                {/* Placeholder Media Skeleton when has_media is true but media is resolving */}
+                {post.has_media && !post.video && !attachedMedia && !mediaUrl && (
+                  <div className="mt-2.5 w-full h-48 sm:h-56 rounded-2xl bg-gray-100/90 border border-gray-200/70 animate-pulse flex flex-col items-center justify-center text-gray-400 gap-2">
+                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-400">
+                      <Loader2 size={18} className="animate-spin" />
+                    </div>
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                      Loading media...
+                    </span>
                   </div>
                 )}
               </>

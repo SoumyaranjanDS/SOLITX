@@ -909,7 +909,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
       {/* Mobile Bottom Nav & FAB (conditionally rendered) */}
       {!hideMobileNav && (
         <>
-          <div className="md:hidden fixed bottom-0 left-0 right-0 h-[53px] bg-white/95 backdrop-blur-xl border-t border-[#EFF3F4] flex justify-around items-center z-30">
+          <div className="md:hidden fixed bottom-0 left-0 right-0 h-[53px] bg-white/95 backdrop-blur-xl border-t border-[#EFF3F4] flex justify-around items-center z-40">
             {navItems.slice(0, 4).map(item => (
               <button
                 key={item.path}
@@ -939,7 +939,7 @@ const AppShell = ({ children, rightSidebar = true, hideMobileNav = false, noBott
                 redirectToAuth(navigate);
               }
             }}
-            className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_4px_20px_rgba(124,58,237,0.45)] z-20 transition-all active:scale-95 hover:scale-105"
+            className="md:hidden fixed bottom-[64px] right-4 w-14 h-14 bg-[#7C3AED] hover:bg-[#6D28D9] text-white rounded-full flex items-center justify-center shadow-[0_4px_20px_rgba(124,58,237,0.45)] z-40 transition-all active:scale-95 hover:scale-105"
             title="Create Post"
           >
             <SquarePen size={23} strokeWidth={2.2} />

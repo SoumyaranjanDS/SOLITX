@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
+import FeedSkeleton from '../components/FeedSkeleton';
 import api from '../api';
 import { getAvatarUrl } from '../utils/avatar';
 import { redirectToAuth } from '../utils/authRedirect';
@@ -218,7 +219,7 @@ const ListDetail = () => {
       <div className="min-h-screen bg-white">
         
         {/* Sticky Header with Back Button */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-20 border-b border-[#EFF3F4] px-4 py-2.5 flex items-center justify-between">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b border-[#EFF3F4] px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/lists')}
@@ -362,17 +363,7 @@ const ListDetail = () => {
         {activeTab === 'feed' && (
           <div className="pb-16">
             {loadingFeed ? (
-              <div className="divide-y divide-[#EFF3F4]">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="flex gap-3 px-4 py-4 animate-pulse">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-1/4" />
-                      <div className="h-3 bg-gray-200 rounded w-3/4" />
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <FeedSkeleton count={3} />
             ) : posts.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="w-14 h-14 bg-purple-50 text-[#7C3AED] rounded-full flex items-center justify-center mx-auto mb-3">

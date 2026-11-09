@@ -34,6 +34,9 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
+  // On-demand chunk loading (prevents eating bandwidth while scrolling)
+  const hasStartedLoadRef = useRef(false);
+
   // Double-tap seek feedback animation
   const [seekFeedback, setSeekFeedback] = useState(null); // { type: 'rewind' | 'forward', time: 10 }
   const lastTapRef = useRef({ time: 0, x: 0 });
@@ -140,10 +143,10 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
         hlsRef.current.destroy();
       }
 
-      // YouTube-like pre-buffering configuration
+      // YouTube-like pre-buffering configuration (On-Demand: only loads chunks on Play)
       const hls = new Hls({
         capLevelToPlayerSize: false, // Never cap resolution to small screen size
-        autoStartLoad: true,
+        autoStartLoad: false, // DO NOT download video chunks on feed scroll! Saves data!
         startLevel: -1, // Auto level selection
         // Aggressive forward pre-chunk downloading
         maxBufferLength: 60, // Keep downloading chunks up to 60s ahead
@@ -260,7 +263,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     };
   }, [updateBufferState, video?.duration_seconds]);
 
-  // Auto-pause when scrolled out of view
+  // Auto-pause and stop data loading when scrolled out of view (saves cellular/Wi-Fi data)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -268,13 +271,24 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (!entry.isIntersecting && videoRef.current && !videoRef.current.paused) {
-            videoRef.current.pause();
-            setIsPlaying(false);
+          if (!entry.isIntersecting && videoRef.current) {
+            if (!videoRef.current.paused) {
+              videoRef.current.pause();
+              setIsPlaying(false);
+            }
+            // Stop downloading chunks when user scrolls past video
+            if (hlsRef.current && hasStartedLoadRef.current) {
+              hlsRef.current.stopLoad();
+            }
+          } else if (entry.isIntersecting && hasStartedLoadRef.current) {
+            // Resume loading chunks if user scrolls back
+            if (hlsRef.current) {
+              hlsRef.current.startLoad();
+            }
           }
         });
       },
-      { threshold: 0.25 }
+      { threshold: 0.2 }
     );
 
     observer.observe(container);
@@ -303,6 +317,30 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
     }
   }, [showQualityMenu]);
 
+  // On-demand chunk loader & play (zero chunks downloaded until user taps Play)
+  const startLoadingAndPlay = useCallback(async () => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    resetControlsTimeout();
+    if (!hasStartedLoadRef.current) {
+      hasStartedLoadRef.current = true;
+      if (hlsRef.current) {
+        setIsBuffering(true);
+        hlsRef.current.startLoad(0);
+      } else if (!v.src) {
+        v.src = video?.hls_url || video?.download_url || "";
+      }
+    }
+
+    try {
+      await v.play();
+      setIsPlaying(true);
+    } catch (err) {
+      console.warn("[VideoPlayer] Play error:", err.message);
+    }
+  }, [resetControlsTimeout, video?.hls_url, video?.download_url]);
+
   // Toggle play/pause
   const togglePlay = (e) => {
     e?.stopPropagation();
@@ -311,9 +349,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
 
     resetControlsTimeout();
     if (v.paused) {
-      v.play()
-        .then(() => setIsPlaying(true))
-        .catch(() => {});
+      startLoadingAndPlay();
     } else {
       v.pause();
       setIsPlaying(false);
@@ -556,22 +592,22 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       ref={containerRef}
       onClick={handleContainerClick}
       onMouseMove={resetControlsTimeout}
-      className={`group relative w-full rounded-2xl overflow-hidden bg-black select-none cursor-pointer flex items-center justify-center max-h-[520px] sm:max-h-[580px] ${className}`}
+      className={`group relative isolate z-0 w-full rounded-2xl overflow-hidden bg-black select-none cursor-pointer flex items-center justify-center max-h-[520px] sm:max-h-[580px] ${className}`}
       style={getAspectRatioStyle()}
     >
-      {/* Video Element */}
+      {/* Video Element (preload="none" prevents downloading chunks before user plays) */}
       <video
         ref={videoRef}
         poster={video?.thumbnail_url || undefined}
         onEnded={() => setIsPlaying(false)}
         playsInline
-        preload="metadata"
+        preload="none"
         className="w-full h-full object-contain pointer-events-none"
       />
 
       {/* Buffering Spinner Overlay */}
       {isBuffering && (
-        <div className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center pointer-events-none z-20">
+        <div className="absolute inset-0 m-auto w-12 h-12 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center pointer-events-none z-10">
           <Loader2 size={24} className="text-[#A78BFA] animate-spin" />
         </div>
       )}
@@ -581,7 +617,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
         <div
           className={`absolute inset-y-0 ${
             seekFeedback.type === "rewind" ? "left-0 w-1/3 bg-white/10" : "right-0 w-1/3 bg-white/10"
-          } flex items-center justify-center pointer-events-none transition-all duration-300 animate-in fade-in z-20`}
+          } flex items-center justify-center pointer-events-none transition-all duration-300 animate-in fade-in z-10`}
         >
           <div className="flex flex-col items-center text-white bg-black/70 backdrop-blur-md px-3 py-2 rounded-2xl shadow-xl">
             {seekFeedback.type === "rewind" ? <RotateCcw size={22} /> : <RotateCw size={22} />}
@@ -597,7 +633,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
         <button
           type="button"
           onClick={togglePlay}
-          className="absolute inset-0 m-auto w-14 h-14 sm:w-16 sm:h-16 bg-black/65 hover:bg-black/85 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-2xl transition-all border border-white/20 active:scale-95 z-20"
+          className="absolute inset-0 m-auto w-14 h-14 sm:w-16 sm:h-16 bg-black/65 hover:bg-black/85 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-2xl transition-all border border-white/20 active:scale-95 z-10"
           title="Play"
         >
           <Play size={26} className="ml-1 fill-white" />
@@ -607,7 +643,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
       {/* YouTube-Inspired Control Bar Overlay */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2.5 sm:p-3 pt-6 sm:pt-8 transition-opacity duration-200 flex flex-col gap-1.5 sm:gap-2 z-30 ${
+        className={`absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2.5 sm:p-3 pt-6 sm:pt-8 transition-opacity duration-200 flex flex-col gap-1.5 sm:gap-2 z-20 ${
           showControls || !isPlaying ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -711,7 +747,7 @@ export const VideoPlayer = ({ video: initialVideo, videoId, className = "" }) =>
 
                 {/* Quality Popover (Mobile touch-friendly) */}
                 {showQualityMenu && (
-                  <div className="absolute bottom-9 right-0 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 min-w-[120px] backdrop-blur-xl z-50 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
+                  <div className="absolute bottom-9 right-0 bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl py-1.5 min-w-[120px] backdrop-blur-xl z-30 animate-in fade-in zoom-in-95 duration-100 overflow-hidden">
                     <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider border-b border-white/5">
                       Quality
                     </div>

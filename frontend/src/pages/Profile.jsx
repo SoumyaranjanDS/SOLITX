@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard, { formatRelativeTime } from '../components/PostCard';
+import FeedSkeleton from '../components/FeedSkeleton';
 import api from '../api';
 import { uploadMediaDirectToS3 } from '../utils/mediaUpload';
 import { getAvatarUrl } from '../utils/avatar';
@@ -710,7 +711,7 @@ const Profile = () => {
     <AppShell>
       <div className="flex flex-col min-h-screen bg-white">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white/90 backdrop-blur-xl border-b border-[#EFF3F4] px-4 h-[53px] flex items-center gap-6">
+        <div className="sticky top-0 z-30 bg-white/90 backdrop-blur-xl border-b border-[#EFF3F4] px-4 h-[53px] flex items-center gap-6">
           <button
             onClick={() => navigate(-1)}
             className="p-2 -ml-2 rounded-full hover:bg-[#EFF3F4] text-[#0F1419] transition-colors"
@@ -1007,20 +1008,7 @@ const Profile = () => {
             const isTabLoading = postsLoading && (currentItems === null || currentItems === undefined);
 
             if (isTabLoading) {
-              return (
-                <div className="divide-y divide-[#EFF3F4]">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="flex gap-3 px-4 py-4 animate-pulse">
-                      <div className="w-10 h-10 rounded-full bg-gray-200 flex-shrink-0" />
-                      <div className="flex-1 space-y-2.5">
-                        <div className="h-4 bg-gray-200 rounded w-1/4" />
-                        <div className="h-3 bg-gray-200 rounded w-3/4" />
-                        <div className="h-3 bg-gray-200 rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
+              return <FeedSkeleton count={3} />;
             }
 
             if (!currentItems || currentItems.length === 0) {

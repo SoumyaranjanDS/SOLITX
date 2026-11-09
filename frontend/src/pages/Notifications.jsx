@@ -102,7 +102,7 @@ const Notifications = () => {
       <div className="min-h-screen bg-white">
         
         {/* Sticky Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-20 border-b border-[#EFF3F4]">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b border-[#EFF3F4]">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
               {currentUser?.username && (

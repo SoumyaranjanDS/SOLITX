@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bookmark, Sparkles, RefreshCw } from 'lucide-react';
 import AppShell from '../components/AppShell';
 import PostCard from '../components/PostCard';
+import FeedSkeleton from '../components/FeedSkeleton';
 import api from '../api';
 import { redirectToAuth } from '../utils/authRedirect';
 
@@ -39,7 +40,7 @@ const Bookmarks = () => {
       <div className="min-h-screen bg-white">
         
         {/* Sticky Header */}
-        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-20 border-b border-[#EFF3F4] px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-md z-30 border-b border-[#EFF3F4] px-4 py-3 flex items-center justify-between">
           <div>
             <h1 className="text-[19px] sm:text-[20px] font-black text-[#0F1419]">Bookmarks</h1>
             <p className="text-[13px] text-[#536471]">
@@ -61,10 +62,7 @@ const Bookmarks = () => {
 
         {/* Content */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-3">
-            <div className="w-8 h-8 border-3 border-[#7C3AED] border-t-transparent rounded-full animate-spin" />
-            <p className="text-[14px] text-[#536471]">Loading your saved posts...</p>
-          </div>
+          <FeedSkeleton count={3} />
         ) : !currentUser?.username ? (
           <div className="text-center py-20 px-4">
             <div className="w-14 h-14 bg-purple-50 text-[#7C3AED] rounded-full flex items-center justify-center mx-auto mb-3">
