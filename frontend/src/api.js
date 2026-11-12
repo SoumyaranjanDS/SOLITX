@@ -3,7 +3,7 @@ import { redirectToAuth } from "./utils/authRedirect";
 
 const api = axios.create({
   // Use VITE_API_URL in development, but fallback to the relative path in production
-  // This allows Nginx to seamlessly route /api/v1 to the backend via reverse proxy!
+  // This allows Nginx route /api/v1 to the backend via reverse proxy!
   baseURL: import.meta.env.VITE_API_URL || "/api/v1",
   headers: {
     "Content-Type": "application/json",
